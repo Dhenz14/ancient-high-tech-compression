@@ -1,0 +1,89 @@
+# ==============================================================================
+# Environment & Secrets
+# ==============================================================================
+.env
+.env.local
+.env.production
+.env.staging
+
+# ==============================================================================
+# Python
+# ==============================================================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+# Database & Cache
+# ==============================================================================
+*.db
+*.db-wal
+*.db-shm
+.cache/
+cache_temp/
+
+# ==============================================================================
+# Temp & System Files
+# ==============================================================================
+temp_*
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+*.log
+gc.log.lock
+.agents/
+uv.lock
+
+# ==============================================================================
+# Archives & Historical Backups (NOT for GitHub)
+# These are local Replit backups - too large and not relevant for collaboration
+# ==============================================================================
+archives/
+fortressv*/
+fortress_v*/
+FORTRESS_V*/
+CONSOLIDATED_STRATEGIC_BACKUPS/
+ARCHIVE_FIX_SCRIPTS/
+ARCHIVE_TEMPORARY_FIX_SCRIPTS/
+attached_assets/
+git_managed_backups/
+implementation_archive/
+CURRENT_ACTIVE_SYSTEM_DOCUMENTATION/
+SCANNER_DOCUMENTATION/
+critical_system_protection/
+fortressv20/
+fortressv21/
+fortressv23/
+fortressv24/
+fortressv26/
+fortressv30/
+fortressv31/
+fortressv45/
+
+# ==============================================================================
+# Large Data & Binary Files (too big for GitHub)
+# ==============================================================================
+*.zip
+*.tsv
+bulletproof_240k_progress.json
+COMPLETE_235K_SUPERSENSE_MAPPINGS.json
+complete_word_mappings_100x100.json
+ArcHive_Data_Export_*.zip
+ancient_high_tech_compression_*.zip
+backup_data_extract.tsv
+
+# ==============================================================================
+# Generated Reports & Analysis (not source code)
+# ==============================================================================
+advanced_optimization_analysis_report.json
+ANCHOR_PROTECTION_SYSTEM.json
+BLANK_SYSTEM_VALIDATION_REPORT.json
+BLANK_SYSTEM_VALIDATION_REPORT.md
+BLANK_VALIDATION_EXECUTIVE_SUMMARY.md
+51st_supersense_integration.json
+analysis_reports/
