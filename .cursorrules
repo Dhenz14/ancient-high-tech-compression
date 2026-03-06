@@ -1,0 +1,120 @@
+# Ancient High-Tech Symbol Compression System
+# Cursor AI Configuration
+
+## What This Project Is
+
+A deterministic text compression system that encodes words as 1-bit symbols with
+template-based positional reconstruction. Built for Hive blockchain deployment.
+Target: 5KB on-chain storage with 19.3:1 compression ratio and 100% reconstruction.
+
+## Architecture Philosophy
+
+**Ancient/High-Tech Principle**: Store only tiny codes on-chain. All intelligence
+lives in templates (pre-computed lookup tables). The decoder reconstructs everything
+from codes + templates with zero ambiguity.
+
+## CRITICAL: Where Active Code Lives
+
+### Core Production Files (ROOT - DO NOT MOVE)
+- `production_scanner.py` - AUTHORITATIVE scanner module (imports here only)
+- `stepped-pipeline-server.py` - Main 6-step pipeline server
+- `real-extraction-server.py` - Content extraction server
+- `SIMPLE_WORD_SYMBOL_MAPPING_SYSTEM.py` - 249,777 hardcoded word→symbol mappings
+- `MICROSCOPIC_INTERNAL_LINE_ARCHITECTURE_2025.py` - Line positioning system
+- `CONTRACTION_SUPER_SYMBOL_INTEGRATION.py` - 36 contraction types
+- `COMPREHENSIVE_MORPHOLOGICAL_PATTERN_DETECTOR.py` - 438 morphological patterns
+
+### Coordinate Encoding System (NEWEST - PRIMARY FOCUS)
+```
+src/coordinate_encoding/
+├── coordinate_encoder.py      # Main encoder - TIER-MARKER-FREE (key: no redundant markers!)
+├── coordinate_decoder.py      # Main decoder - infers tier from byte-length
+├── pattern_matcher.py         # Template lookup engine
+├── template_cache.py          # 8,946 pre-computed templates
+├── scanner_integration.py     # Drop-in for production_scanner.py
+├── migration_utils.py         # Migration validator with 2-tier guards
+├── bit_packer.py              # Bit-level packing utilities
+└── templates/
+    └── coordinate_patterns/
+        ├── horizontal_coordinate_templates.json  # 8,946 patterns
+        └── vertical_coordinate_templates.json    # 8,946 patterns
+```
+
+### Tests
+```
+tests/coordinate_encoding/     # 54 tests, 100% passing
+```
+
+### Documentation (ACTIVE - in docs/)
+- `docs/COORDINATE_ENCODING_TIER_MARKER_FREE_ARCHITECTURE.md` - Encoding design
+- `docs/TEMPLATE_SYSTEM_DEEP_DIVE.md` - How templates work
+- `docs/COORDINATE_ENCODING_EMPIRICAL_PERFORMANCE.md` - Performance data
+- `replit.md` - Master architecture reference
+
+## CRITICAL ARCHITECTURE RULES
+
+### 1. Zero Overhead / Ancient High-Tech
+NEVER store redundant data. Every byte must earn its place.
+- Word positions encoded via template codes (1-2 bytes), NOT raw position arrays
+- Tier markers are WASTE - tier is inferred from byte-length
+- Format: [word_symbol][vertical_code][horizontal_code] = 3 bytes minimum
+
+### 2. Encoding Tiers (Tier-Marker-FREE)
+```
+Tier 0A: 1 byte  → single ultra-common positions (codes 0x00-0x0F)
+Tier 0B: 1 byte  → common 1-2 position patterns (94 templates)
+Tier 1:  2 bytes → 3-position patterns (8,836 templates)
+Tier 2:  variable → 0xFF + delta encoding (unlimited, any pattern)
+
+Decoder infers tier from byte-length. NO separate tier marker bytes!
+```
+
+### 3. Template System
+8,946 pre-computed templates covering ~95% of real-world position patterns.
+- Tier 0A: 16 templates (single positions on key lines)
+- Tier 0B: 94 templates (1-2 position patterns)
+- Tier 1: 8,836 templates (3-position patterns)
+- Tier 2: delta fallback for anything not in templates
+
+### 4. Import Policy (HARDCODED HIGHWAYS)
+Always import from exact production module names:
+```python
+from production_scanner import EnhancedCleanWordToVisualSymbolScannerWithMicroscopicLines
+from SIMPLE_WORD_SYMBOL_MAPPING_SYSTEM import SimpleWordSymbolMapping
+```
+NO abstraction layers. Direct imports are intentional.
+
+### 5. Dictionary Architecture
+Oxford 250K master dictionary and NEW_WORDS_DISCOVERED.json are PERMANENT.
+Never truncate, purge, or "clean up" dictionary data.
+
+### 6. Military-Grade Overhead Protection
+MilitaryGradeOverheadEnforcer BLOCKS multi-byte symbols and overhead data.
+This is SECURITY SUCCESS, not a bug. Never work around it.
+
+## What NOT to Touch
+
+- `archives/`, `fortressv*/`, `FORTRESS_V*/` - Historical versions, ignore
+- `CONSOLIDATED_STRATEGIC_BACKUPS/` - Backups, ignore
+- Files in root with dates in names (e.g., `*_20250721_*.py`) - Old backups
+- `attached_assets/` - Replit-managed, ignore
+- Any `.zip` files - Old snapshots
+
+## Super Symbol Types
+```
+TYPE 1: Morphological variants (walk/walked/walking → one base symbol)
+TYPE 2: Word forms (different POS of same word)
+TYPE 3: Fixed sentences (common 3-4 word phrases)
+TYPE 4: Contractions (can't, won't, etc. → 36 types)
+```
+
+## Grid Dimensions
+- Document grid: 100 lines × 80 characters per line
+- Vertical templates: which lines (1-100) a word appears on
+- Horizontal templates: which position (1-80) within a line
+
+## Hive Blockchain Context
+- Target: 5KB Custom JSON per block
+- Symbol stream: word_symbol + vertical_code + horizontal_code per word
+- Templates stored client-side (never transmitted)
+- Reconstruction: 100% deterministic from codes + templates
