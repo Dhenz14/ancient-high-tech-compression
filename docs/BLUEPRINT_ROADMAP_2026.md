@@ -2,7 +2,7 @@
 
 ## Current Baseline (March 17, 2026)
 
-- **176 tests passing**, 100% lossless round-trip
+- **189 tests passing**, 100% lossless round-trip
 - **249,777 word dictionary** (NLTK Brown + Gutenberg + WordNet)
 - **Two working approaches** preserved side by side
 - **BREAKTHROUGH**: Two-stage sequential v3 beats brotli on diverse text
@@ -15,12 +15,14 @@
 
 ### Approach B: Sequential Rank Stream v3 (`src/sequential/`) — CURRENT BEST
 
-- **30.0:1 on Article x10** (merged varint ranks + brotli stage 2)
-- **Beats brotli standalone on blog posts (2.7:1 vs 2.4:1)**
-- **Beats brotli standalone on mixed text (3.2:1 vs 3.0:1)**
-- **Within 2% of brotli on Article x1 (486 vs 477 bytes)**
+- **30.8:1 on Article x10** (merged varint ranks + brotli stage 2)
+- **Beats brotli standalone on Article x1 (471 vs 477 bytes, +1.3%)**
+- **Beats brotli standalone on blog posts (285 vs 325 bytes, +12.3%)**
+- **Beats brotli standalone on mixed text (694 vs 757 bytes, +8.3%)**
+- **Within 1% of brotli on repeated articles**
+- AI-optimized rank assignment: Brown re-rank + simulated annealing (+2.8% vs frequency-only)
 - v3 format: merged varint (rank*32+variant), extra section for ALL CAPS/mixed/leading/unknown
-- 82 dedicated tests: contractions, ALL CAPS, mixed case, leading/trailing punct, unicode, dialogue
+- 95 dedicated tests: contractions, ALL CAPS, mixed case, leading/trailing punct, unicode, dialogue, rank optimizer
 - Simpler architecture, massive compression, 100% lossless
 
 ### Target
@@ -91,7 +93,7 @@ Completed via Approach B (Sequential Rank Stream v3):
 ### Gate Tests: ALL PASSING
 
 ```text
-[x] All 176 tests pass (94 pipeline + 82 sequential)
+[x] All 189 tests pass (94 pipeline + 95 sequential)
 [x] round-trip with "I can't believe they won't do it" → exact match
 [x] "don't" round-trips correctly (contraction preserved)
 [x] ALL CAPS: "NASA" → "NASA" (not "Nasa")
@@ -449,8 +451,8 @@ Template caching in IndexedDB.
 | Phase | Ratio (Article x10) | Ours+brotli | What Changed |
 |-------|---------------------|-------------|--------------|
 | **Phase 0 (DONE)** | **30.0:1** | **500 bytes** | v3 merged varint, all bug fixes, 176 tests |
-| Phase 1 | ~32:1 | ~470 bytes | Phrase detection (bigrams as single tokens) |
-| Phase 1b | ~33:1 | ~455 bytes | AI-optimized rank assignment |
+| **Phase 1b (DONE)** | **30.8:1** | **487 bytes** | AI-optimized rank assignment (Brown re-rank + SA), 189 tests |
+| Phase 1 | ~33:1 | ~455 bytes | Phrase detection (bigrams as single tokens) |
 | Phase 5 | ~35:1 | ~430 bytes | Unified symbol codes |
 | Phase 6 | ~35:1 | ~430 bytes | Hive deployment |
 

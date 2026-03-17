@@ -2,21 +2,22 @@
 
 A two-stage text compression system for Hive blockchain deployment.
 Stage 1: word-level rank encoding. Stage 2: brotli byte-level compression.
-**Beats brotli on diverse/unique text. Within 2% on repeated text.**
+**Beats brotli on diverse text and single articles. Within 1% on repeated text.**
 
 ---
 
-## Results
+## Results (AI-Optimized Rank Assignment)
 
-| Text          | Raw    | brotli | Ours+brotli | Ratio  | vs brotli       |
-|---------------|--------|--------|-------------|--------|-----------------|
-| Article x1    | 1,499  | 477    | **486**     | 3.1:1  | -2% (close)     |
-| Article x5    | 7,499  | 482    | **500**     | 15.0:1 | -4%             |
-| Article x10   | 14,999 | 482    | **500**     | 30.0:1 | -4%             |
-| Blog post     | 781    | 325    | **291**     | 2.7:1  | **+10% WIN**    |
-| Mixed text    | 2,281  | 757    | **718**     | 3.2:1  | **+5% WIN**     |
+| Text          | Raw    | brotli | Ours+brotli | Ratio  | vs brotli          |
+|---------------|--------|--------|-------------|--------|--------------------|
+| Article x1    | 1,499  | 477    | **471**     | 3.2:1  | **+1.3% WIN**      |
+| Article x2    | 2,999  | 480    | **482**     | 6.2:1  | -0.4% (close)      |
+| Article x5    | 7,499  | 482    | **484**     | 15.5:1 | -0.4% (close)      |
+| Article x10   | 14,999 | 482    | **487**     | 30.8:1 | -1.0% (close)      |
+| Blog post     | 781    | 325    | **285**     | 2.7:1  | **+12.3% WIN**     |
+| Mixed text    | 2,281  | 757    | **694**     | 3.3:1  | **+8.3% WIN**      |
 
-Dictionary: 249,777 words stored on Hive (free per document).
+Dictionary: 249,777 words with AI-optimized rank ordering stored on Hive (free per document).
 brotli embeds its dictionary per file — we don't.
 
 ---
@@ -76,7 +77,8 @@ src/
 ├── sequential/          # CURRENT BEST — Sequential Rank Stream v3
 │   ├── encoder.py       # Text → merged varint blob
 │   ├── decoder.py       # Blob → text (v3 + v2 backward compat)
-│   └── two_stage.py     # Encoder + brotli/zlib stage 2
+│   ├── two_stage.py     # Encoder + brotli/zlib stage 2
+│   └── rank_optimizer.py # AI-optimized rank assignment (Brown re-rank + SA)
 │
 ├── pipeline/            # Inverted Index Pipeline (Approach A)
 │   └── ...              # 94 tests, coordinate encoding, morphology
@@ -91,7 +93,7 @@ src/
 └── serializer/          # Blob serialization utilities
 
 tests/
-├── sequential/          # 82 tests: roundtrip, varint, blob format, two-stage
+├── sequential/          # 95 tests: roundtrip, varint, blob, two-stage, rank optimizer
 └── pipeline/            # 94 tests: coordinate encoding, morphology, blanks
 
 docs/
@@ -106,14 +108,14 @@ docs/
 ## Tests
 
 ```bash
-# All 176 tests
-wsl -d Ubuntu-24.04 -- bash -c "cd /path/to/repo && python -m pytest tests/ -v"
+# All 189 tests
+wsl -d Ubuntu-24.04 -- bash -c "cd /path/to/repo && python3 -m pytest tests/ -v"
 
-# Sequential only (82 tests)
-python -m pytest tests/sequential/ -v
+# Sequential only (95 tests)
+python3 -m pytest tests/sequential/ -v
 
 # Pipeline only (94 tests)
-python -m pytest tests/pipeline/ -v
+python3 -m pytest tests/pipeline/ -v
 ```
 
 ---
@@ -123,9 +125,9 @@ python -m pytest tests/pipeline/ -v
 | Feature    | Approach A: Inverted Index           | Approach B: Sequential (current best) |
 |------------|--------------------------------------|---------------------------------------|
 | Location   | `src/pipeline/`                      | `src/sequential/`                     |
-| Tests      | 94 passing                           | 82 passing                            |
+| Tests      | 94 passing                           | 95 passing                            |
 | Format     | Word → positions                     | Rank stream + brotli                  |
-| Best ratio | 2.1:1 on Article x10                 | 30.0:1 on Article x10                 |
+| Best ratio | 2.1:1 on Article x10                 | 30.8:1 on Article x10                 |
 | Status     | Ideas bank (blanks, visual encoding) | Production path                       |
 
 ---
@@ -133,14 +135,16 @@ python -m pytest tests/pipeline/ -v
 ## Dictionary
 
 249,777 words built from NLTK (Brown Corpus + Gutenberg + WordNet).
-Words ranked by frequency. Rank 1 = "the", Rank 2 = "of", Rank 3 = "and".
+AI-optimized rank assignment: Brown-only frequency re-ranking removes Gutenberg
+archaic word contamination from the 2-byte tier, then simulated annealing
+refines tier-2 ranks for maximum brotli compressibility.
 Stored on Hive blockchain — free per document (no per-file dictionary overhead).
 
 ---
 
 ## Roadmap
 
-1. **AI-optimized rank assignment** — train model to assign IDs so co-occurring words get adjacent ranks → better brotli back-references
+1. ~~**AI-optimized rank assignment**~~ — DONE. Brown re-rank + simulated annealing. +2.8% vs original, beats brotli on Article x1.
 2. **Phrase detection** — common bigrams/trigrams as single tokens
 3. **Blank system** — layer on top of sequential stream for structural patterns
 4. **Hive deployment** — on-chain storage with client-side decoding

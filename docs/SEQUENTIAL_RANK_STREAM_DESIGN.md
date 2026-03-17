@@ -139,34 +139,55 @@ The two-stage wrapper adds 1 byte header: `B` (brotli) or `Z` (zlib) or `N` (non
 7. Caps detection: lower / title / ALL CAPS / mixed (last two → extra section)
 8. All remaining text → dictionary lookup → rank or extra section
 
-## Benchmark Results (March 17, 2026)
+## Benchmark Results (March 17, 2026 — AI-Optimized Ranks)
 
-Dictionary: 249,777 words (stored on Hive = free per document)
+Dictionary: 249,777 words with AI-optimized rank ordering (stored on Hive = free per document)
 
-| Text          | Raw    | brotli | Ours+brotli | Ratio | vs brotli |
-|---------------|--------|--------|-------------|-------|-----------|
-| Article x1    | 1,499  | 477    | **486**     | 3.1:1 | -2% (CLOSE) |
-| Article x2    | 2,999  | 480    | **492**     | 6.1:1 | -2% |
-| Article x5    | 7,499  | 482    | **500**     | 15.0:1| -4% |
-| Article x10   | 14,999 | 482    | **500**     | 30.0:1| -4% |
-| Blog post     | 781    | 325    | **291**     | 2.7:1 | **+10% WIN** |
-| Mixed text    | 2,281  | 757    | **718**     | 3.2:1 | **+5% WIN** |
+| Text          | Raw    | brotli | Ours+brotli | Ratio  | vs brotli          |
+|---------------|--------|--------|-------------|--------|--------------------|
+| Article x1    | 1,499  | 477    | **471**     | 3.2:1  | **+1.3% WIN**      |
+| Article x2    | 2,999  | 480    | **482**     | 6.2:1  | -0.4% (CLOSE)      |
+| Article x5    | 7,499  | 482    | **484**     | 15.5:1 | -0.4% (CLOSE)      |
+| Article x10   | 14,999 | 482    | **487**     | 30.8:1 | -1.0% (CLOSE)      |
+| Blog post     | 781    | 325    | **285**     | 2.7:1  | **+12.3% WIN**     |
+| Mixed text    | 2,281  | 757    | **694**     | 3.3:1  | **+8.3% WIN**      |
 
-We beat brotli on diverse/unique text. We're within 4% on repetitive text.
+We beat brotli on diverse text AND single articles. Within 1% on repeated text.
 Our dictionary is on Hive (free), theirs is embedded per-file.
+
+### AI-Optimized Rank Assignment
+
+The rank ordering uses a two-phase optimization:
+
+**Phase 1 — Brown-only re-ranking**: The original dictionary used Brown + Gutenberg
+corpus frequencies, which put archaic words (thou, thee, hath, unto, ye) in the
+2-byte tier (ranks 4-511). Re-ranking by Brown-only frequency promotes 134 modern
+words (government, system, program, president, social, national) to the 2-byte tier.
+
+**Phase 2 — Simulated annealing**: Starting from the Brown-reranked dictionary,
+SA iteratively swaps pairs of tier-2 ranks and evaluates brotli compressed size.
+Swaps that reduce size are accepted; worse swaps are accepted with decreasing
+probability (temperature schedule). This fine-tunes byte patterns for brotli's
+LZ77 back-reference matching.
+
+Combined improvement: 2.8% over frequency-only ranking, 3.3% better than raw brotli.
+
+Files: `src/sequential/rank_optimizer.py`, `optimized_dictionary_cache.json`
 
 ## Files
 
 ```
 src/sequential/
-  __init__.py       — Package init, exports encoder/decoder
-  encoder.py        — SequentialEncoder: text → merged varint blob
-  decoder.py        — SequentialDecoder: blob → text (v3 + v2 compat)
-  two_stage.py      — TwoStageCompressor: encoder + brotli/zlib stage 2
+  __init__.py        — Package init, exports encoder/decoder
+  encoder.py         — SequentialEncoder: text → merged varint blob
+  decoder.py         — SequentialDecoder: blob → text (v3 + v2 compat)
+  two_stage.py       — TwoStageCompressor: encoder + brotli/zlib stage 2
+  rank_optimizer.py  — AI-optimized rank assignment (Brown re-rank + SA)
 
 tests/sequential/
   __init__.py
-  test_roundtrip.py — 82 tests: basic, contractions, all punct types,
-                      caps modes, possessives, unknown words, prose,
-                      varint encoding, blob format, two-stage, edge cases
+  test_roundtrip.py       — 82 tests: basic, contractions, all punct types,
+                            caps modes, possessives, unknown words, prose,
+                            varint encoding, blob format, two-stage, edge cases
+  test_rank_optimizer.py  — 13 tests: re-ranking, SA, round-trip, fast encode
 ```
