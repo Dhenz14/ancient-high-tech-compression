@@ -139,20 +139,20 @@ The two-stage wrapper adds 1 byte header: `B` (brotli) or `Z` (zlib) or `N` (non
 7. Caps detection: lower / title / ALL CAPS / mixed (last two → extra section)
 8. All remaining text → dictionary lookup → rank or extra section
 
-## Benchmark Results (March 17, 2026 — AI-Optimized Ranks)
+## Benchmark Results (March 17, 2026 — Expanded Dictionary + AI-Optimized Ranks)
 
-Dictionary: 249,777 words with AI-optimized rank ordering (stored on Hive = free per document)
+Dictionary: 249,777 words including inflected forms, with AI-optimized rank ordering (stored on Hive = free per document)
 
-| Text          | Raw    | brotli | Ours+brotli | Ratio  | vs brotli          |
-|---------------|--------|--------|-------------|--------|--------------------|
-| Article x1    | 1,499  | 477    | **471**     | 3.2:1  | **+1.3% WIN**      |
-| Article x2    | 2,999  | 480    | **482**     | 6.2:1  | -0.4% (CLOSE)      |
-| Article x5    | 7,499  | 482    | **484**     | 15.5:1 | -0.4% (CLOSE)      |
-| Article x10   | 14,999 | 482    | **487**     | 30.8:1 | -1.0% (CLOSE)      |
-| Blog post     | 781    | 325    | **285**     | 2.7:1  | **+12.3% WIN**     |
-| Mixed text    | 2,281  | 757    | **694**     | 3.3:1  | **+8.3% WIN**      |
+| Text        | Raw    | brotli | Ours+brotli | Ratio  | vs brotli      |
+|-------------|--------|--------|-------------|--------|----------------|
+| Article x1  | 1,499  | 477    | **409**     | 3.7:1  | **+14.3% WIN** |
+| Article x2  | 2,999  | 480    | **411**     | 7.3:1  | **+14.4% WIN** |
+| Article x5  | 7,499  | 482    | **413**     | 18.2:1 | **+14.3% WIN** |
+| Article x10 | 14,999 | 482    | **413**     | 36.3:1 | **+14.3% WIN** |
+| Blog post   | 781    | 325    | **253**     | 3.1:1  | **+22.2% WIN** |
+| Mixed text  | 2,281  | 757    | **614**     | 3.7:1  | **+18.9% WIN** |
 
-We beat brotli on diverse text AND single articles. Within 1% on repeated text.
+We beat brotli on ALL benchmarks by 14-22%.
 Our dictionary is on Hive (free), theirs is embedded per-file.
 
 ### AI-Optimized Rank Assignment

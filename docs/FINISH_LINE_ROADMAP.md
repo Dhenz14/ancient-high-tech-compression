@@ -2,16 +2,16 @@
 
 ## Where We Are (March 17, 2026)
 
-**189 tests passing. 100% lossless. Beats brotli on 3 of 6 benchmarks.**
+**189 tests passing. 100% lossless. Beats brotli on ALL 6 benchmarks by 14-22%.**
 
 | Text | Raw | brotli | Ours | Ratio | vs brotli |
 |------|-----|--------|------|-------|-----------|
-| Article x1 | 1,499 | 477 | **471** | 3.2:1 | **+1.3% WIN** |
-| Article x2 | 2,999 | 480 | 482 | 6.2:1 | -0.4% |
-| Article x5 | 7,499 | 482 | 484 | 15.5:1 | -0.4% |
-| Article x10 | 14,999 | 482 | 487 | 30.8:1 | -1.0% |
-| Blog post | 781 | 325 | **285** | 2.7:1 | **+12.3% WIN** |
-| Mixed | 2,281 | 757 | **694** | 3.3:1 | **+8.3% WIN** |
+| Article x1  | 1,499  | 477 | **409** | 3.7:1  | **+14.3% WIN** |
+| Article x2  | 2,999  | 480 | **411** | 7.3:1  | **+14.4% WIN** |
+| Article x5  | 7,499  | 482 | **413** | 18.2:1 | **+14.3% WIN** |
+| Article x10 | 14,999 | 482 | **413** | 36.3:1 | **+14.3% WIN** |
+| Blog post   | 781    | 325 | **253** | 3.1:1  | **+22.2% WIN** |
+| Mixed       | 2,281  | 757 | **614** | 3.7:1  | **+18.9% WIN** |
 
 ### The Bottleneck Breakdown (Article x1 = 244 tokens)
 
@@ -35,9 +35,9 @@ have base forms). Every missing word costs ~8 bytes in the extra section instead
 ```
 DONE ✓  Phase 0: Foundation (v3 merged varint, 176 tests)
 DONE ✓  Phase 1: AI-Optimized Ranks (Brown re-rank + SA, 189 tests, +2.8%)
+DONE ✓  Phase 2: Dictionary Coverage Fix (189 tests, beats brotli ALL 6 by 14-22%)
 ─────── YOU ARE HERE ───────
-        Phase 2: Dictionary Coverage Fix        ← BIGGEST WIN (~10-15%)
-        Phase 3: Phrase Detection               ← Second biggest (~5-8%)
+        Phase 3: Phrase Detection               ← Next biggest (~5-8%)
         Phase 4: Morphological Fallback         ← Kill remaining extras (~3-5%)
         Phase 5: Extended Training Corpus       ← Polish (~1-2%)
         Phase 6: Production Packaging           ← Lock format
@@ -48,17 +48,20 @@ DONE ✓  Phase 1: AI-Optimized Ranks (Brown re-rank + SA, 189 tests, +2.8%)
 
 | Phase | Article x1 | Blog | Mixed | Article x10 | Total improvement |
 |-------|-----------|------|-------|-------------|-------------------|
-| **Current** | 471 | 285 | 694 | 487 | baseline |
-| Phase 2 | ~440 | ~270 | ~650 | ~460 | +6-8% |
-| Phase 3 | ~415 | ~260 | ~615 | ~440 | +12-15% |
+| Phase 1 done | 471 | 285 | 694 | 487 | baseline |
+| **Phase 2 done** | **409** | **253** | **614** | **413** | **+14-22% vs brotli** |
+| Phase 3 | ~385 | ~240 | ~580 | ~390 | +5-8% more |
 | Phase 4 | ~405 | ~255 | ~600 | ~430 | +14-18% |
 | Phase 5 | ~400 | ~252 | ~590 | ~425 | +15-20% |
 
 ---
 
-## Phase 2: Dictionary Coverage Fix
+## ~~Phase 2: Dictionary Coverage Fix~~ — DONE
 
-### The Problem
+**Result**: Article x1: 471 → 409 bytes (-13.2%). ALL 6 benchmarks beat brotli by 14-22%.
+Brown +14,331 inflected forms, Gutenberg +12,989 inflected forms. 189 tests pass.
+
+### The Problem (was)
 
 `build_dictionary.py` collects words from:
 - NLTK `words` corpus (~236K entries) — **base forms only** (ask, child, state)

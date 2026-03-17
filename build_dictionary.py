@@ -72,6 +72,24 @@ def collect_all_words():
                 all_words.add(name)
     print(f"  + WordNet: {len(all_words) - before} new words")
 
+    # Brown corpus words — adds inflected forms (asked, children, states, looked, has, ...)
+    print("Loading Brown corpus words (inflected forms)...")
+    before = len(all_words)
+    for word in brown.words():
+        w = word.lower().strip()
+        if w.isalpha() and len(w) >= 1:
+            all_words.add(w)
+    print(f"  + Brown: {len(all_words) - before} new words")
+
+    # Gutenberg corpus words — additional inflected forms from classic literature
+    print("Loading Gutenberg corpus words (inflected forms)...")
+    before = len(all_words)
+    for word in gutenberg.words():
+        w = word.lower().strip()
+        if w.isalpha() and len(w) >= 1:
+            all_words.add(w)
+    print(f"  + Gutenberg: {len(all_words) - before} new words")
+
     # Filter: only alphabetic, length >= 1
     all_words = {w for w in all_words if w.isalpha() and len(w) >= 1}
     print(f"  Total unique words: {len(all_words)}")

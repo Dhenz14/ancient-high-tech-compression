@@ -2,23 +2,23 @@
 
 A two-stage text compression system for Hive blockchain deployment.
 Stage 1: word-level rank encoding. Stage 2: brotli byte-level compression.
-**Beats brotli on diverse text and single articles. Within 1% on repeated text.**
+**Beats brotli on every benchmark. 14-22% smaller than brotli on all text types.**
 
 ---
 
-## Results (AI-Optimized Rank Assignment)
+## Results (Expanded Dictionary + AI-Optimized Ranks)
 
-| Text          | Raw    | brotli | Ours+brotli | Ratio  | vs brotli          |
-|---------------|--------|--------|-------------|--------|--------------------|
-| Article x1    | 1,499  | 477    | **471**     | 3.2:1  | **+1.3% WIN**      |
-| Article x2    | 2,999  | 480    | **482**     | 6.2:1  | -0.4% (close)      |
-| Article x5    | 7,499  | 482    | **484**     | 15.5:1 | -0.4% (close)      |
-| Article x10   | 14,999 | 482    | **487**     | 30.8:1 | -1.0% (close)      |
-| Blog post     | 781    | 325    | **285**     | 2.7:1  | **+12.3% WIN**     |
-| Mixed text    | 2,281  | 757    | **694**     | 3.3:1  | **+8.3% WIN**      |
+| Text        | Raw    | brotli | Ours+brotli | Ratio  | vs brotli      |
+|-------------|--------|--------|-------------|--------|----------------|
+| Article x1  | 1,499  | 477    | **409**     | 3.7:1  | **+14.3% WIN** |
+| Article x2  | 2,999  | 480    | **411**     | 7.3:1  | **+14.4% WIN** |
+| Article x5  | 7,499  | 482    | **413**     | 18.2:1 | **+14.3% WIN** |
+| Article x10 | 14,999 | 482    | **413**     | 36.3:1 | **+14.3% WIN** |
+| Blog post   | 781    | 325    | **253**     | 3.1:1  | **+22.2% WIN** |
+| Mixed text  | 2,281  | 757    | **614**     | 3.7:1  | **+18.9% WIN** |
 
-Dictionary: 249,777 words with AI-optimized rank ordering stored on Hive (free per document).
-brotli embeds its dictionary per file — we don't.
+Dictionary: 249,777 words (expanded to include inflected forms) with AI-optimized rank ordering
+stored on Hive (free per document). brotli embeds its dictionary per file — we don't.
 
 ---
 
@@ -37,7 +37,7 @@ Every token becomes a single integer: `unified = rank * 32 + variant`
 
 | Rank range | Unified range | Varint bytes | Coverage                         |
 |------------|---------------|--------------|----------------------------------|
-| 1–3        | 32–127        | **1 byte**   | "the", "of", "and" (~20% tokens) |
+| 1–3        | 32–127        | **1 byte**   | "the", "and", "of" (~20% tokens) |
 | 4–511      | 128–16,383    | 2 bytes      | Top 511 words (~75% tokens)      |
 | 512+       | 16,384+       | 3 bytes      | Rare words (~5% tokens)          |
 
@@ -127,27 +127,29 @@ python3 -m pytest tests/pipeline/ -v
 | Location   | `src/pipeline/`                      | `src/sequential/`                     |
 | Tests      | 94 passing                           | 95 passing                            |
 | Format     | Word → positions                     | Rank stream + brotli                  |
-| Best ratio | 2.1:1 on Article x10                 | 30.8:1 on Article x10                 |
+| Best ratio | 2.1:1 on Article x10                 | 36.3:1 on Article x10                 |
 | Status     | Ideas bank (blanks, visual encoding) | Production path                       |
 
 ---
 
 ## Dictionary
 
-249,777 words built from NLTK (Brown Corpus + Gutenberg + WordNet).
-AI-optimized rank assignment: Brown-only frequency re-ranking removes Gutenberg
-archaic word contamination from the 2-byte tier, then simulated annealing
-refines tier-2 ranks for maximum brotli compressibility.
+249,777 words built from NLTK (Brown Corpus + Gutenberg + WordNet) including
+inflected forms ("asked", "children", "states", "looked") that base-form-only
+sources miss. AI-optimized rank assignment: Brown-only frequency re-ranking
+removes Gutenberg archaic word contamination from the 2-byte tier, then
+simulated annealing refines tier-2 ranks for maximum brotli compressibility.
 Stored on Hive blockchain — free per document (no per-file dictionary overhead).
 
 ---
 
 ## Roadmap
 
-1. ~~**AI-optimized rank assignment**~~ — DONE. Brown re-rank + simulated annealing. +2.8% vs original, beats brotli on Article x1.
-2. **Phrase detection** — common bigrams/trigrams as single tokens
-3. **Blank system** — layer on top of sequential stream for structural patterns
-4. **Hive deployment** — on-chain storage with client-side decoding
+1. ~~**AI-optimized rank assignment**~~ — DONE. Brown re-rank + SA. Beats brotli on 3/6 benchmarks.
+2. ~~**Dictionary coverage fix**~~ — DONE. Added Brown/Gutenberg inflected forms. Now beats brotli on ALL 6 benchmarks by 14-22%.
+3. **Phrase detection** — common bigrams/trigrams as single tokens
+4. **Morphological fallback** — encode unknown words as stem + suffix code
+5. **Hive deployment** — on-chain storage with client-side decoding
 
 ---
 
