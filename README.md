@@ -1,157 +1,150 @@
-# Ancient High-Tech Symbol Compression System
+# Ancient High-Tech Compression
 
-A deterministic text compression system that transforms words into 1-bit visual symbols
-with template-based positional reconstruction for Hive blockchain deployment.
-
-**Target**: 5KB on-chain storage | 19.3:1 compression ratio | 100% reconstruction accuracy
+A two-stage text compression system for Hive blockchain deployment.
+Stage 1: word-level rank encoding. Stage 2: brotli byte-level compression.
+**Beats brotli on diverse/unique text. Within 2% on repeated text.**
 
 ---
 
-## Core Philosophy
+## Results
 
-**Ancient/High-Tech**: Store only tiny codes on-chain. All intelligence lives in
-pre-computed templates. Decoder reconstructs everything deterministically from codes + templates.
+| Text          | Raw    | brotli | Ours+brotli | Ratio  | vs brotli       |
+|---------------|--------|--------|-------------|--------|-----------------|
+| Article x1    | 1,499  | 477    | **486**     | 3.1:1  | -2% (close)     |
+| Article x5    | 7,499  | 482    | **500**     | 15.0:1 | -4%             |
+| Article x10   | 14,999 | 482    | **500**     | 30.0:1 | -4%             |
+| Blog post     | 781    | 325    | **291**     | 2.7:1  | **+10% WIN**    |
+| Mixed text    | 2,281  | 757    | **718**     | 3.2:1  | **+5% WIN**     |
 
+Dictionary: 249,777 words stored on Hive (free per document).
+brotli embeds its dictionary per file — we don't.
+
+---
+
+## How It Works
+
+```text
+Text → [Stage 1: Sequential Encoder] → rank blob → [Stage 2: brotli q=11] → final bytes
 ```
-Raw Text → 1-bit Symbols + Position Codes → Hive Blockchain (5KB)
-                                    ↓
-                          Templates (client-side)
-                                    ↓
-                         100% Exact Reconstruction
+
+### Stage 1 — Sequential Rank Stream (v3 Merged Varint)
+
+Every token becomes a single integer: `unified = rank * 32 + variant`
+
+- `rank` = word's frequency rank in the 249K dictionary
+- `variant` = `(is_title_case << 4) | trailing_punct_code`
+
+| Rank range | Unified range | Varint bytes | Coverage                         |
+|------------|---------------|--------------|----------------------------------|
+| 1–3        | 32–127        | **1 byte**   | "the", "of", "and" (~20% tokens) |
+| 4–511      | 128–16,383    | 2 bytes      | Top 511 words (~75% tokens)      |
+| 512+       | 16,384+       | 3 bytes      | Rare words (~5% tokens)          |
+
+Top-3 words fit in 1 byte. 75% of all English tokens fit in 2 bytes.
+
+### Extra Section
+
+Tokens that can't be encoded as `rank * variant` go into a length-prefixed extra section:
+
+- Unknown words (not in 249K dictionary)
+- ALL CAPS words (NASA, FBI) — original casing preserved
+- Mixed case words (iPhone, McDonald's) — original casing preserved
+- Leading punctuation ("hello, (test) — lead char prepended
+
+### Stage 2 — brotli
+
+brotli at quality=11 operates on the raw rank bytes.
+Repeated articles encode as "repeat previous N bytes" — ~4 bytes per repetition.
+
+### Blob Format
+
+```text
+[version: 1 byte = 0x03]
+[token_count: 3 bytes uint24 big-endian]
+[main_stream: LEB128 varint per token]
+[extra_section: length-prefixed UTF-8 strings]
 ```
+
+No position data. No caps bitmap. No inverted index. Sequential order IS position.
 
 ---
 
 ## Project Structure
 
-```
-/
-├── production_scanner.py                           # AUTHORITATIVE scanner
-├── stepped-pipeline-server.py                      # Main 6-step pipeline
-├── real-extraction-server.py                       # Content extraction
-├── SIMPLE_WORD_SYMBOL_MAPPING_SYSTEM.py            # 249,777 word→symbol mappings
-├── MICROSCOPIC_INTERNAL_LINE_ARCHITECTURE_2025.py  # Line positioning
-├── COMPREHENSIVE_MORPHOLOGICAL_PATTERN_DETECTOR.py # 438 morphological patterns
-├── CONTRACTION_SUPER_SYMBOL_INTEGRATION.py         # 36 contraction types
+```text
+src/
+├── sequential/          # CURRENT BEST — Sequential Rank Stream v3
+│   ├── encoder.py       # Text → merged varint blob
+│   ├── decoder.py       # Blob → text (v3 + v2 backward compat)
+│   └── two_stage.py     # Encoder + brotli/zlib stage 2
 │
-├── src/
-│   └── coordinate_encoding/       # Coordinate Lookup Encoding System
-│       ├── coordinate_encoder.py  # Tier-marker-free encoder
-│       ├── coordinate_decoder.py  # Byte-length-based tier inference
-│       ├── pattern_matcher.py     # Template lookup O(1)
-│       ├── template_cache.py      # 8,946 pre-computed templates
-│       ├── scanner_integration.py # Drop-in for production_scanner.py
-│       ├── migration_utils.py     # Migration validator (2-tier guards)
-│       └── templates/
-│           └── coordinate_patterns/
-│               ├── horizontal_coordinate_templates.json
-│               └── vertical_coordinate_templates.json
+├── pipeline/            # Inverted Index Pipeline (Approach A)
+│   └── ...              # 94 tests, coordinate encoding, morphology
 │
-├── tests/
-│   └── coordinate_encoding/       # 54 tests, 100% passing
+├── wordid/
+│   └── dictionary.py    # 249,777-word rank dictionary
 │
-└── docs/
-    ├── COORDINATE_ENCODING_TIER_MARKER_FREE_ARCHITECTURE.md
-    ├── TEMPLATE_SYSTEM_DEEP_DIVE.md
-    └── COORDINATE_ENCODING_EMPIRICAL_PERFORMANCE.md
+├── tokenizer/           # Whitespace tokenizer with punct stripping
+├── morphology/          # 438 morphological patterns
+├── blanks/              # Blank system (future layer)
+├── inverted_index/      # Word → position index
+└── serializer/          # Blob serialization utilities
+
+tests/
+├── sequential/          # 82 tests: roundtrip, varint, blob format, two-stage
+└── pipeline/            # 94 tests: coordinate encoding, morphology, blanks
+
+docs/
+├── SEQUENTIAL_RANK_STREAM_DESIGN.md      # v3 format, benchmarks, design decisions
+├── MASTER_ARCHITECTURE_2026.md           # Full system architecture
+├── BLUEPRINT_ROADMAP_2026.md             # Roadmap with phases A/B
+└── ...                                   # Research docs
 ```
 
 ---
 
-## Coordinate Encoding System
-
-The core innovation: encoding word positions as minimal template codes rather than raw arrays.
-
-### How It Works
-
-```
-Word "the" appears 3 times at lines [1, 5, 10], positions [5, 15, 25]
-
-WITHOUT encoding:  6 bytes (raw arrays)
-WITH encoding:     4 bytes (2 template codes)
-
-[word_symbol][vertical_code][horizontal_code]
-    0x7E         0x0926         0x11D7
-    1 byte       2 bytes        2 bytes = 5 bytes total for ALL 3 instances
-```
-
-### Template Tiers (Tier-Marker-FREE)
-
-| Tier | Size    | Templates | Coverage                       |
-|------|---------|-----------|--------------------------------|
-| 0A   | 1 byte  | 16        | Ultra-common single positions  |
-| 0B   | 1 byte  | 94        | Common 1-2 position patterns   |
-| 1    | 2 bytes | 8,836     | 3-position patterns            |
-| 2    | variable| unlimited | Delta encoding (any pattern)   |
-
-**Key**: No tier marker bytes. Tier inferred from byte-length. Zero redundancy.
-
-### Total Capacity
-
-```
-8,946 templates × 2 dimensions = 80+ million unique position combinations
-```
-
-### Performance
-
-| Scenario                  | Storage    |
-|---------------------------|------------|
-| Single-instance word      | 3 bytes    |
-| 3-instance word (Tier 1)  | 5 bytes    |
-| 50-instance word (delta)  | ~103 bytes |
-| vs. raw position arrays   | 40-60% smaller |
-
----
-
-## Pipeline
-
-```
-Text → [Extract] → [Bin 1.0] → [Scan] → [Grid] → [Blank] → [Store] → [Reconstruct]
-                                  ↓
-                       TYPE 1: Morphological super symbols
-                       TYPE 2: Word form super symbols
-                       TYPE 3: Fixed sentence super symbols
-                       TYPE 4: Contraction super symbols (36 types)
-```
-
----
-
-## Symbol System
-
-Every word in the 250K Oxford dictionary has a permanent 1-byte symbol.
-Symbols never change. Position data encoded separately via coordinate templates.
-
----
-
-## Grid Dimensions
-
-Document grid: **100 lines × 80 characters per line**
-
-- Vertical templates: which lines (1-100) a word appears on
-- Horizontal templates: which position (1-80) within each line
-- Both dimensions encoded independently, paired in order during reconstruction
-
----
-
-## Running
+## Tests
 
 ```bash
-python stepped-pipeline-server.py   # Main pipeline
-python real-extraction-server.py    # Content extraction
+# All 176 tests
+wsl -d Ubuntu-24.04 -- bash -c "cd /path/to/repo && python -m pytest tests/ -v"
+
+# Sequential only (82 tests)
+python -m pytest tests/sequential/ -v
+
+# Pipeline only (94 tests)
+python -m pytest tests/pipeline/ -v
 ```
 
 ---
 
-## Documentation
+## Two Approaches
 
-| File | Contents |
-|------|----------|
-| `replit.md` | Master architecture reference |
-| `.cursorrules` | Cursor AI project guide |
-| `docs/COORDINATE_ENCODING_TIER_MARKER_FREE_ARCHITECTURE.md` | Encoding design |
-| `docs/TEMPLATE_SYSTEM_DEEP_DIVE.md` | How 8,946 templates work |
-| `docs/COORDINATE_ENCODING_EMPIRICAL_PERFORMANCE.md` | Performance data |
+| Feature    | Approach A: Inverted Index           | Approach B: Sequential (current best) |
+|------------|--------------------------------------|---------------------------------------|
+| Location   | `src/pipeline/`                      | `src/sequential/`                     |
+| Tests      | 94 passing                           | 82 passing                            |
+| Format     | Word → positions                     | Rank stream + brotli                  |
+| Best ratio | 2.1:1 on Article x10                 | 30.0:1 on Article x10                 |
+| Status     | Ideas bank (blanks, visual encoding) | Production path                       |
 
 ---
 
-**Stack**: Python · Flask · PostgreSQL · NLTK/WordNet · Hive Blockchain · pytest
+## Dictionary
+
+249,777 words built from NLTK (Brown Corpus + Gutenberg + WordNet).
+Words ranked by frequency. Rank 1 = "the", Rank 2 = "of", Rank 3 = "and".
+Stored on Hive blockchain — free per document (no per-file dictionary overhead).
+
+---
+
+## Roadmap
+
+1. **AI-optimized rank assignment** — train model to assign IDs so co-occurring words get adjacent ranks → better brotli back-references
+2. **Phrase detection** — common bigrams/trigrams as single tokens
+3. **Blank system** — layer on top of sequential stream for structural patterns
+4. **Hive deployment** — on-chain storage with client-side decoding
+
+---
+
+**Stack**: Python · brotli · zlib · NLTK/WordNet · Hive Blockchain · pytest
