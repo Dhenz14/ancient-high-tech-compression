@@ -145,14 +145,18 @@ Dictionary: 249,777 words including inflected forms, with AI-optimized rank orde
 
 | Text        | Raw    | brotli | Ours+brotli | Ratio  | vs brotli      |
 |-------------|--------|--------|-------------|--------|----------------|
-| Article x1  | 1,499  | 477    | **409**     | 3.7:1  | **+14.3% WIN** |
-| Article x2  | 2,999  | 480    | **411**     | 7.3:1  | **+14.4% WIN** |
-| Article x5  | 7,499  | 482    | **413**     | 18.2:1 | **+14.3% WIN** |
-| Article x10 | 14,999 | 482    | **413**     | 36.3:1 | **+14.3% WIN** |
-| Blog post   | 781    | 325    | **253**     | 3.1:1  | **+22.2% WIN** |
-| Mixed text  | 2,281  | 757    | **614**     | 3.7:1  | **+18.9% WIN** |
+| Article x1  | 1,499  | 477    | **410**     | 3.7:1  | **+14.0% WIN** |
+| Article x2  | 2,999  | 480    | **412**     | 7.3:1  | **+14.2% WIN** |
+| Article x5  | 7,499  | 482    | **414**     | 18.1:1 | **+14.1% WIN** |
+| Article x10 | 14,999 | 482    | **414**     | 36.2:1 | **+14.1% WIN** |
+| Blog post   | 781    | 325    | **251**     | 3.1:1  | **+22.8% WIN** |
+| News        | 1,879  | 583    | **488**     | 3.9:1  | **+16.3% WIN** |
+| Tech doc    | 1,729  | 555    | **488**     | 3.5:1  | **+12.1% WIN** |
+| Story       | 1,591  | 630    | **466**     | 3.4:1  | **+26.0% WIN** |
+| Mixed (2)   | 2,281  | 757    | **609**     | 3.7:1  | **+19.6% WIN** |
+| All mixed   | 7,483  | 2,390  | **1,875**   | 4.0:1  | **+21.5% WIN** |
 
-We beat brotli on ALL benchmarks by 14-22%.
+We beat brotli on ALL 10 benchmarks across ALL text genres by 12-26%.
 Our dictionary is on Hive (free), theirs is embedded per-file.
 
 ### AI-Optimized Rank Assignment

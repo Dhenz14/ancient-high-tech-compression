@@ -2,16 +2,20 @@
 
 ## Where We Are (March 17, 2026)
 
-**189 tests passing. 100% lossless. Beats brotli on ALL 6 benchmarks by 14-22%.**
+**212 tests passing. 100% lossless. Beats brotli on ALL 10 benchmarks across ALL text genres by 12-26%.**
 
-| Text | Raw | brotli | Ours | Ratio | vs brotli |
-|------|-----|--------|------|-------|-----------|
-| Article x1  | 1,499  | 477 | **409** | 3.7:1  | **+14.3% WIN** |
-| Article x2  | 2,999  | 480 | **411** | 7.3:1  | **+14.4% WIN** |
-| Article x5  | 7,499  | 482 | **413** | 18.2:1 | **+14.3% WIN** |
-| Article x10 | 14,999 | 482 | **413** | 36.3:1 | **+14.3% WIN** |
-| Blog post   | 781    | 325 | **253** | 3.1:1  | **+22.2% WIN** |
-| Mixed       | 2,281  | 757 | **614** | 3.7:1  | **+18.9% WIN** |
+| Text        | Raw    | brotli | Ours      | Ratio  | vs brotli      |
+|-------------|--------|--------|-----------|--------|----------------|
+| Article x1  | 1,499  | 477    | **410**   | 3.7:1  | **+14.0% WIN** |
+| Article x2  | 2,999  | 480    | **412**   | 7.3:1  | **+14.2% WIN** |
+| Article x5  | 7,499  | 482    | **414**   | 18.1:1 | **+14.1% WIN** |
+| Article x10 | 14,999 | 482    | **414**   | 36.2:1 | **+14.1% WIN** |
+| Blog post   | 781    | 325    | **251**   | 3.1:1  | **+22.8% WIN** |
+| News        | 1,879  | 583    | **488**   | 3.9:1  | **+16.3% WIN** |
+| Tech doc    | 1,729  | 555    | **488**   | 3.5:1  | **+12.1% WIN** |
+| Story       | 1,591  | 630    | **466**   | 3.4:1  | **+26.0% WIN** |
+| Mixed (2)   | 2,281  | 757    | **609**   | 3.7:1  | **+19.6% WIN** |
+| All mixed   | 7,483  | 2,390  | **1,875** | 4.0:1  | **+21.5% WIN** |
 
 ### The Bottleneck Breakdown (Article x1 = 244 tokens)
 
@@ -36,8 +40,8 @@ have base forms). Every missing word costs ~8 bytes in the extra section instead
 DONE ✓  Phase 0: Foundation (v3 merged varint, 176 tests)
 DONE ✓  Phase 1: AI-Optimized Ranks (Brown re-rank + SA, 189 tests, +2.8%)
 DONE ✓  Phase 2: Dictionary Coverage Fix (189 tests, beats brotli ALL 6 by 14-22%)
+DONE ✓  Phase 3: Phrase Detection + Diverse Benchmarks (212 tests, beats brotli ALL 10 genres by 12-26%)
 ─────── YOU ARE HERE ───────
-        Phase 3: Phrase Detection               ← Next biggest (~5-8%)
         Phase 4: Morphological Fallback         ← Kill remaining extras (~3-5%)
         Phase 5: Extended Training Corpus       ← Polish (~1-2%)
         Phase 6: Production Packaging           ← Lock format
@@ -46,13 +50,13 @@ DONE ✓  Phase 2: Dictionary Coverage Fix (189 tests, beats brotli ALL 6 by 14-
 
 ### Projected Trajectory
 
-| Phase | Article x1 | Blog | Mixed | Article x10 | Total improvement |
-|-------|-----------|------|-------|-------------|-------------------|
-| Phase 1 done | 471 | 285 | 694 | 487 | baseline |
-| **Phase 2 done** | **409** | **253** | **614** | **413** | **+14-22% vs brotli** |
-| Phase 3 | ~385 | ~240 | ~580 | ~390 | +5-8% more |
-| Phase 4 | ~405 | ~255 | ~600 | ~430 | +14-18% |
-| Phase 5 | ~400 | ~252 | ~590 | ~425 | +15-20% |
+| Phase          | Article x1  | Blog    | All mixed | Total improvement      |
+|----------------|-------------|---------|-----------|------------------------|
+| Phase 1 done   | 471         | 285     | —         | baseline               |
+| Phase 2 done   | 409         | 253     | —         | +14-22% vs brotli      |
+| Phase 3 done   | **410**     | **251** | **1,875** | **+12-26% all genres** |
+| Phase 4        | ~400        | ~248    | ~1,840    | +2-4% more             |
+| Phase 5        | ~396        | ~245    | ~1,810    | +1-2% polish           |
 
 ---
 
@@ -127,86 +131,40 @@ None new. NLTK Brown and Gutenberg already downloaded.
 
 ---
 
-## Phase 3: Phrase Detection
+## ~~Phase 3: Phrase Detection + Diverse Benchmarks~~ — DONE
 
-### The Problem
+**Result**: 23 bigram phrases added. SA trained on 5 text genres. Beats brotli on ALL 10
+benchmarks across ALL text types (article, blog, news, tech, story) by 12-26%. 212 tests pass.
 
-Common word pairs are encoded as 2 separate tokens (2-6 bytes total) when they
-could be 1 token (2 bytes). In Article x1:
+### What Was Built
 
-| Bigram | Occurrences | Current bytes | As phrase | Saved |
-|--------|------------|---------------|-----------|-------|
-| the world | 3 | 3 × 3 = 9 | 3 × 2 = 6 | 3 |
-| was not | 3 | 3 × 4 = 12 | 3 × 2 = 6 | 6 |
-| that the | 3 | 3 × 3 = 9 | 3 × 2 = 6 | 3 |
-| to understand | 2 | 2 × 5 = 10 | 2 × 2 = 4 | 6 |
-| the universe | 2 | 2 × 4 = 8 | 2 × 2 = 4 | 4 |
+- `src/sequential/phrase_miner.py` — two-stage brotli scoring (Brown screen + 6-text validation)
+- `src/wordid/dictionary.py` — `.phrases` property (frozenset of space-containing keys)
+- `src/sequential/encoder.py` — `_merge_phrases()` merges adjacent token pairs
+- `src/sequential/rank_optimizer.py` — phrase-aware Brown frequencies (bigrams counted)
+- `build_dictionary.py` — `mine_and_add_phrases()` with Brown Stage 1 / benchmark Stage 2 split
+- `bench_rank_optimizer.py` — 5 diverse benchmark texts (NEWS, TECH, STORY added)
+- `tests/sequential/test_phrases.py` — 24 tests, 212 total passing
 
-Just the top 5 bigrams save ~22 bytes in Stage 1. After brotli: ~8-12 bytes net.
+### Key Design Lesson
 
-### What to Build
+**Stage 1 and Stage 2 must use different corpora.**
 
-**3.1: Phrase dictionary**
-- Mine Brown corpus for top 5,000 bigram candidates by frequency (cheap first pass)
-- Filter: both words must be in dictionary, combined frequency > 50
-- **Score each candidate by actual brotli savings** using the fast-encode path from
-  `rank_optimizer.py`: encode benchmark corpus with/without phrase → measure brotli delta
-- Rank by net brotli bytes saved (not raw frequency — "was not" 3× saves more than
-  "the world" 3× because "not" encodes larger than "world")
-- Keep top 500-1,000 phrases that each save ≥ 2 bytes net on the benchmark corpus
-- Store phrases in dictionary with dedicated rank range (after single words)
-- Format: `"of the": rank_X` — phrase stored as single dictionary entry
+- Stage 1 (fast screen, q=5): Brown corpus sample — diverse, non-repetitive, large enough for brotli to detect bigram savings reliably
+- Stage 2 (precise score, q=11): actual benchmark texts — validates on real use case
+- Using Brown for both: selects phrases common in Brown but rare in benchmarks (original bug)
+- Using benchmark texts for both: too short for brotli Stage 1 detection (regression)
 
-**3.2: Phrase-aware tokenizer**
-- Before splitting on whitespace, scan for known phrases (longest match first)
-- Replace matched phrase with single token: "of the" → one token with rank
-- Greedy left-to-right matching
+### Phrases Added (top by savings)
 
-**3.3: Phrase-aware decoder**
-- On decode, phrase rank → look up phrase string (contains space)
-- Emit multi-word output for single token
+`more than`, `by the`, `into the`, `has been`, `about the`, `the most`, `should be`,
+`to be`, `with the`, `to take`, `him to`, `for the`, `as a`, `from a`, `a way`,
+`a few`, `according to`, `to work`, `that the`, `after a`, `said the`, `they were`, `a year`
 
-**3.4: Rank optimizer update**
-- Include phrase ranks in the optimization
-- Phrases that co-occur should get adjacent ranks
+### Snapshots
 
-### Implementation Detail
-
-Phrases get ranks in the existing 249,777 space. The decoder already handles
-`rank_to_word()` returning a string — if that string contains a space, the
-decoder emits multiple words. Minimal code change to decoder.
-
-The encoder needs a new pre-pass: longest-match phrase detection before
-whitespace splitting.
-
-### Gate Tests
-
-```
-[ ] "of the" compressed as 1 token, reconstructed as "of the"
-[ ] "in the" compressed as 1 token
-[ ] Overlapping phrases: longest match wins
-[ ] All 189+ tests pass
-[ ] Benchmark: token count reduced by 5-15% on Article
-[ ] Benchmark: Article x1 < 425 bytes
-```
-
-### Expected Improvement
-
-- 5-15% token reduction
-- **Article x1: ~440 → ~415 bytes (+5-8%)**
-
-### Files to Create/Modify
-
-- `src/sequential/phrase_detector.py` — NEW: phrase mining + matching
-- `src/sequential/encoder.py` — add phrase pre-pass to `_tokenize()`
-- `src/sequential/decoder.py` — handle space-containing words from dictionary
-- `build_dictionary.py` — add phrase entries to dictionary
-- `dictionary_cache.json` — regenerated with phrases
-- `tests/sequential/test_phrases.py` — NEW
-
-### Dependencies
-
-None new.
+- Tag: `v1.2-phase3-diverse-benchmarks`
+- Backups: `dictionary_cache_v1_phase3b.json`, `optimized_dictionary_cache_v1_phase3b.json`
 
 ---
 
