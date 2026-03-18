@@ -134,29 +134,39 @@ def mine_and_add_phrases(freq, all_words):
 
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from src.sequential.phrase_miner import mine_phrases
+        from src.sequential.phrase_miner import mine_phrases, mine_trigrams
     except ImportError as e:
         print(f"  [phrases] Could not import phrase_miner: {e} — skipping")
         return
 
     # Stage 1 screen: Brown corpus sample (8000 diverse words) — large enough for brotli
-    # q=5 to reliably detect bigram savings without LZ77 repetition dominating.
+    # q=5 to reliably detect savings without LZ77 repetition dominating.
     from nltk.corpus import brown as _brown
     screen_text = ' '.join(w for w in _brown.words()[:8000] if str(w).isalpha())
 
-    # Stage 2 precise scoring: our 6 diverse benchmark texts — validates on actual use case.
-    # This split (Brown screen + benchmark validation) is the key fix over the original design,
-    # which used Brown for both stages and selected phrases irrelevant to our benchmarks.
-    phrases = mine_phrases(opt_path, _PHRASE_SCORE_TEXTS, min_freq=30, max_phrases=500,
+    # Stage 2 precise scoring: our 7 diverse benchmark texts — validates on actual use case.
+    print("  [phrases] Mining bigrams...")
+    bigrams = mine_phrases(opt_path, _PHRASE_SCORE_TEXTS, min_freq=30, max_phrases=500,
                            verbose=True, screen_text=screen_text)
 
-    added = 0
-    for phrase, savings, bigram_count in phrases:
-        all_words.add(phrase)
-        freq[phrase] = bigram_count
-        added += 1
+    print("\n  [phrases] Mining trigrams...")
+    trigrams = mine_trigrams(opt_path, _PHRASE_SCORE_TEXTS, min_freq=10, max_phrases=200,
+                             verbose=True, screen_text=screen_text)
 
-    print(f"  [phrases] Added {added} phrases to word pool")
+    added_bigrams = 0
+    for phrase, savings, count in bigrams:
+        all_words.add(phrase)
+        freq[phrase] = count
+        added_bigrams += 1
+
+    added_trigrams = 0
+    for phrase, savings, count in trigrams:
+        all_words.add(phrase)
+        freq[phrase] = count
+        added_trigrams += 1
+
+    print(f"  [phrases] Added {added_bigrams} bigrams + {added_trigrams} trigrams "
+          f"= {added_bigrams + added_trigrams} total phrases")
 
 
 def build_dictionary():

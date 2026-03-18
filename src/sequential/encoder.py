@@ -264,18 +264,41 @@ class SequentialEncoder:
 
     def _merge_phrases(self, tokens: List[Tuple[str, str, int, int, int]]) -> List[Tuple[str, str, int, int, int]]:
         """
-        Post-processing pass: merge adjacent token pairs that form a known phrase.
+        Post-processing pass: merge adjacent tokens that form a known phrase.
+
+        Tries trigrams (3-token) before bigrams (2-token) at each position,
+        so longer phrases take priority over their component shorter phrases.
 
         Merge conditions (all must hold):
           - combined lowercased form is in the phrase dictionary
-          - first token has no trailing punct (T_NONE)
-          - second token has no leading punct (L_NONE)
-          - caps: (C_LOWER, C_LOWER) or (C_TITLE, C_LOWER) only
-            catches "in a world" and "In a world" — skips "IN A", "in A", etc.
+          - no trailing punct on any token except the last
+          - no leading punct on any token except the first
+          - caps: first token C_LOWER or C_TITLE; remaining tokens C_LOWER
         """
         result = []
         i = 0
         while i < len(tokens):
+            # Try trigram first (3 tokens → 1)
+            if i + 2 < len(tokens):
+                orig_i, word_i, caps_i, lead_i, trail_i = tokens[i]
+                orig_j, word_j, caps_j, lead_j, trail_j = tokens[i + 1]
+                orig_k, word_k, caps_k, lead_k, trail_k = tokens[i + 2]
+                if (trail_i == T_NONE and lead_j == L_NONE
+                        and trail_j == T_NONE and lead_k == L_NONE
+                        and caps_i in (C_LOWER, C_TITLE)
+                        and caps_j == C_LOWER and caps_k == C_LOWER):
+                    phrase_key = word_i + ' ' + word_j + ' ' + word_k
+                    if phrase_key in self._phrases:
+                        result.append((
+                            orig_i + ' ' + orig_j + ' ' + orig_k,
+                            phrase_key,
+                            caps_i,
+                            lead_i,
+                            trail_k,
+                        ))
+                        i += 3
+                        continue
+            # Try bigram (2 tokens → 1)
             if i + 1 < len(tokens):
                 orig_i, word_i, caps_i, lead_i, trail_i = tokens[i]
                 orig_j, word_j, caps_j, lead_j, trail_j = tokens[i + 1]
@@ -286,7 +309,7 @@ class SequentialEncoder:
                         result.append((
                             orig_i + ' ' + orig_j,
                             phrase_key,
-                            caps_i,   # C_LOWER or C_TITLE preserved
+                            caps_i,
                             lead_i,
                             trail_j,
                         ))

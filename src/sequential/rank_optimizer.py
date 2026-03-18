@@ -139,13 +139,19 @@ class RankOptimizer:
                 freq[w] += 1
                 words_lower.append(w)
 
-        # Count bigram frequencies for dictionary phrases
+        # Count bigram and trigram frequencies for dictionary phrases
         known_phrases = {w for w in self._all_words if ' ' in w}
         if known_phrases:
+            known_bigrams = {w for w in known_phrases if w.count(' ') == 1}
+            known_trigrams = {w for w in known_phrases if w.count(' ') == 2}
             for i in range(len(words_lower) - 1):
                 bigram = words_lower[i] + ' ' + words_lower[i + 1]
-                if bigram in known_phrases:
+                if bigram in known_bigrams:
                     freq[bigram] += 1
+                if i + 2 < len(words_lower):
+                    trigram = words_lower[i] + ' ' + words_lower[i + 1] + ' ' + words_lower[i + 2]
+                    if trigram in known_trigrams:
+                        freq[trigram] += 1
 
         return dict(freq)
 

@@ -1,5 +1,5 @@
 """
-Phase 3 Phrase Miner — discover and score common bigrams for dictionary inclusion.
+Phrase Miner — discover and score bigram and trigram phrases for dictionary inclusion.
 
 Two-stage scoring:
   Stage 1: theoretical pre-filter (component byte costs) + quick brotli screen
@@ -9,9 +9,9 @@ Two-stage scoring:
 Returns phrases ranked by net brotli savings. Only phrases that actually reduce
 compressed size after accounting for their rank slot cost are returned.
 
-Key insight: phrases where both component words are already 1-byte ranks (1-3)
-save zero bytes — "of the" (rank 3 + rank 1 = 2 bytes) would cost 2 bytes as
-a phrase too. Only 2-byte+2-byte and 2-byte+1-byte combos give real savings.
+Key insight: phrases where both component words are already 1-byte ranks (1-7 in v4)
+save zero bytes. Only 2-byte+2-byte, 2-byte+1-byte, or 3-token combos with
+sufficient combined cost give real savings.
 """
 
 import bisect
@@ -254,6 +254,206 @@ def mine_phrases(
         print(f"  Phrases with positive savings: {len(positives)}")
         print(f"\n  Top 25 by actual brotli savings:")
         for phrase, savings, cnt in full_scored[:25]:
+            marker = "✓" if savings > 0 else "✗"
+            print(f"  {marker} '{phrase}': saves {savings:+d} bytes (freq={cnt:,})")
+
+    result = [(phrase, savings, cnt)
+              for phrase, savings, cnt in full_scored
+              if savings > 0]
+    return result[:max_phrases]
+
+
+def _merge_tokens_for_trigram(
+    token_lists: List[List[Tuple]],
+    w1: str,
+    w2: str,
+    w3: str,
+) -> List[List[Tuple]]:
+    """
+    Merge adjacent token triples (w1, w2, w3) into single phrase tokens.
+
+    Merge conditions (all must hold):
+      - first token has no trailing punct (T_NONE)
+      - second token has no leading or trailing punct (L_NONE, T_NONE)
+      - third token has no leading punct (L_NONE)
+      - caps: first is C_LOWER or C_TITLE, second and third are C_LOWER
+    """
+    phrase = w1 + ' ' + w2 + ' ' + w3
+    result = []
+    for tokens in token_lists:
+        merged = []
+        i = 0
+        while i < len(tokens):
+            if i + 2 < len(tokens):
+                orig_i, word_i, caps_i, lead_i, trail_i = tokens[i]
+                orig_j, word_j, caps_j, lead_j, trail_j = tokens[i + 1]
+                orig_k, word_k, caps_k, lead_k, trail_k = tokens[i + 2]
+                if (word_i == w1 and word_j == w2 and word_k == w3
+                        and trail_i == T_NONE and lead_j == L_NONE
+                        and trail_j == T_NONE and lead_k == L_NONE
+                        and caps_i in (C_LOWER, C_TITLE)
+                        and caps_j == C_LOWER and caps_k == C_LOWER):
+                    merged.append((
+                        orig_i + ' ' + orig_j + ' ' + orig_k,
+                        phrase,
+                        caps_i,
+                        lead_i,
+                        trail_k,
+                    ))
+                    i += 3
+                    continue
+            merged.append(tokens[i])
+            i += 1
+        result.append(merged)
+    return result
+
+
+def mine_trigrams(
+    dictionary_cache_path: str,
+    benchmark_texts: List[str],
+    min_freq: int = 10,
+    max_phrases: int = 200,
+    verbose: bool = True,
+    screen_text: str = None,
+) -> List[Tuple[str, int, int]]:
+    """
+    Mine and score trigram phrases for dictionary inclusion.
+
+    Same two-stage pipeline as mine_phrases but for 3-word combinations.
+    Theoretical filter: only trigrams where cost(w1)+cost(w2)+cost(w3) > cost(trigram).
+
+    Args:
+        dictionary_cache_path: Path to current optimized dictionary JSON.
+        benchmark_texts: Texts used for Stage 2 precise brotli scoring.
+        min_freq: Minimum Brown corpus trigram frequency to consider (default 10,
+                  lower than bigrams since trigrams are naturally rarer).
+        max_phrases: Maximum number of trigrams to return.
+        verbose: Print progress and results.
+        screen_text: Text for Stage 1 fast screen. If None, uses benchmark_texts[0].
+
+    Returns:
+        List of (phrase, net_brotli_savings, trigram_count) sorted by savings descending.
+        Only trigrams with positive net savings are included.
+    """
+    nltk.download('brown', quiet=True)
+    from nltk.corpus import brown
+
+    with open(dictionary_cache_path, 'r', encoding='utf-8') as f:
+        rank_map: Dict[str, int] = {
+            w.lower().strip(): int(r) for w, r in json.load(f).items()
+        }
+
+    if verbose:
+        print(f"Dictionary: {len(rank_map):,} words loaded")
+        print("Mining Brown corpus trigrams...")
+
+    words_lower = [w.lower() for w in brown.words() if w.isalpha()]
+    word_freq: Counter = Counter(words_lower)
+    trigram_freq: Counter = Counter()
+    for i in range(len(words_lower) - 2):
+        w1, w2, w3 = words_lower[i], words_lower[i + 1], words_lower[i + 2]
+        if w1 in rank_map and w2 in rank_map and w3 in rank_map:
+            trigram_freq[(w1, w2, w3)] += 1
+
+    if verbose:
+        print(f"  {len(trigram_freq):,} trigram types with all words in dictionary")
+
+    sorted_freqs_desc = sorted(word_freq.values(), reverse=True)
+
+    def estimate_rank(phrase_freq: int) -> int:
+        """Estimate where a phrase would rank based on its frequency."""
+        pos = bisect.bisect_left([-f for f in sorted_freqs_desc], -phrase_freq)
+        return max(8, min(1023, pos + 1))  # v4 tier-2: ranks 8-1023
+
+    # Pre-filter: only trigrams where combined cost > phrase cost
+    candidates = []
+    for (w1, w2, w3), cnt in trigram_freq.items():
+        if cnt < min_freq:
+            continue
+        r1 = rank_map[w1]
+        r2 = rank_map[w2]
+        r3 = rank_map[w3]
+        cost_sep = _bytes_for_rank(r1) + _bytes_for_rank(r2) + _bytes_for_rank(r3)
+        trigram_rank = estimate_rank(cnt)
+        cost_phrase = _bytes_for_rank(trigram_rank)
+        if cost_sep > cost_phrase:
+            savings_per_occ = cost_sep - cost_phrase
+            candidates.append((w1, w2, w3, cnt, savings_per_occ))
+
+    candidates.sort(key=lambda x: -(x[3] * x[4]))
+
+    if verbose:
+        print(f"  {len(candidates):,} candidates pass theoretical filter")
+        print(f"\n  Top 15 by expected savings:")
+        for w1, w2, w3, cnt, spo in candidates[:15]:
+            r1, r2, r3 = rank_map[w1], rank_map[w2], rank_map[w3]
+            pr = estimate_rank(cnt)
+            print(f"    '{w1} {w2} {w3}': freq={cnt:,}  "
+                  f"sep={_bytes_for_rank(r1)}+{_bytes_for_rank(r2)}+{_bytes_for_rank(r3)}B → "
+                  f"phrase@rank{pr}={_bytes_for_rank(pr)}B  "
+                  f"saves {spo}B/occ")
+
+    encoder = SequentialEncoder()
+    token_lists = [encoder._tokenize(text) for text in benchmark_texts]
+
+    if screen_text is not None:
+        screen_tokens = [encoder._tokenize(screen_text)]
+    else:
+        screen_tokens = [token_lists[0]]
+
+    # Stage 1: Quick screen
+    n_screen = min(len(candidates), 500)
+    if verbose:
+        print(f"\nStage 1: quick screen {n_screen} candidates (brotli q=5)...")
+
+    base_quick = _score_quick(screen_tokens, rank_map)
+    quick_scored = []
+
+    for w1, w2, w3, cnt, _ in candidates[:n_screen]:
+        phrase = w1 + ' ' + w2 + ' ' + w3
+        phrase_rank = estimate_rank(cnt)
+        rank_map[phrase] = phrase_rank
+        merged = _merge_tokens_for_trigram(screen_tokens, w1, w2, w3)
+        score = _score_quick(merged, rank_map)
+        del rank_map[phrase]
+        quick_scored.append((w1, w2, w3, cnt, base_quick - score))
+
+    quick_scored.sort(key=lambda x: -x[4])
+    top100 = [(w1, w2, w3, cnt) for w1, w2, w3, cnt, s in quick_scored if s > 0][:100]
+
+    if verbose:
+        print(f"  {len(top100)} candidates passed quick screen (positive q=5 savings)")
+
+    if not top100:
+        if verbose:
+            print("  No trigram candidates passed quick screen.")
+        return []
+
+    # Stage 2: Precise scoring
+    if verbose:
+        print(f"Stage 2: precise scoring {len(top100)} candidates (brotli q=11, all texts)...")
+
+    base_full = _score_full(token_lists, rank_map)
+    full_scored = []
+
+    for w1, w2, w3, cnt in top100:
+        phrase = w1 + ' ' + w2 + ' ' + w3
+        phrase_rank = estimate_rank(cnt)
+        rank_map[phrase] = phrase_rank
+        merged = _merge_tokens_for_trigram(token_lists, w1, w2, w3)
+        score = _score_full(merged, rank_map)
+        del rank_map[phrase]
+        full_scored.append((phrase, base_full - score, cnt))
+
+    full_scored.sort(key=lambda x: -x[1])
+
+    if verbose:
+        positives = [(p, s, c) for p, s, c in full_scored if s > 0]
+        print(f"\n  Results (brotli q=11, all {len(benchmark_texts)} texts):")
+        print(f"  Base compressed: {base_full} bytes")
+        print(f"  Trigrams with positive savings: {len(positives)}")
+        print(f"\n  Top 20 by actual brotli savings:")
+        for phrase, savings, cnt in full_scored[:20]:
             marker = "✓" if savings > 0 else "✗"
             print(f"  {marker} '{phrase}': saves {savings:+d} bytes (freq={cnt:,})")
 

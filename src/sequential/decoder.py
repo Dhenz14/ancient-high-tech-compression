@@ -84,6 +84,8 @@ class SequentialDecoder:
         version = blob[0]
         if version == VERSION_V4:
             return self._decode_v4(blob)
+        elif version == 0x05:
+            return self._decode_v5(blob)
         elif version == VERSION_V3:
             return self._decode_v3(blob)
         elif version == VERSION_V2:
@@ -155,6 +157,109 @@ class SequentialDecoder:
 
             trailing = _TRAIL_STR_V4.get(trail, "")
             words.append(word + trailing)
+
+        return " ".join(words)
+
+    def _decode_v5(self, blob: bytes) -> str:
+        """
+        Decode v5 blank-system blob.
+
+        Layout: [0x05][count:3][n_blanks:2][blank_section:n_blanks*2][main_stream][extra_section]
+
+        blank_section entries (2 bytes each):
+          [rank: 1]       -- tier-1 rank (1-7)
+          [delta_pos: 1]  -- position delta from previous blank (or from 0)
+
+        The decoder interleaves blanked tokens back into the stream at their
+        original positions. Blanked tokens are always: caps=lower, trail=T_NONE.
+        """
+        _VM = 16
+        if len(blob) < 6:
+            return ""
+
+        count = (blob[1] << 16) | (blob[2] << 8) | blob[3]
+        if count == 0:
+            return ""
+
+        n_blanks = (blob[4] << 8) | blob[5]
+        offset = 6
+
+        # Read blank section: reconstruct (absolute_position, rank) pairs
+        blanks = {}  # position -> rank
+        abs_pos = 0
+        for _ in range(n_blanks):
+            if offset + 1 >= len(blob):
+                break
+            rank = blob[offset]
+            delta = blob[offset + 1]
+            abs_pos += delta
+            blanks[abs_pos] = rank
+            offset += 2
+
+        # Read main stream (non-blank tokens)
+        n_main = count - n_blanks
+        main_token_data = []  # (rank, is_cap, trail)
+        for _ in range(n_main):
+            if offset >= len(blob):
+                main_token_data.append((0, False, 0))
+                continue
+            unified, consumed = _decode_varint(blob, offset)
+            offset += consumed
+            rank = unified // _VM
+            variant = unified % _VM
+            is_cap = bool((variant >> 3) & 1)
+            trail = variant & 0x07
+            main_token_data.append((rank, is_cap, trail))
+
+        # Read extra section
+        extra_words = []
+        while offset < len(blob):
+            wlen = blob[offset]
+            offset += 1
+            if offset + wlen > len(blob):
+                break
+            word = blob[offset:offset + wlen].decode('utf-8', errors='replace')
+            extra_words.append(word)
+            offset += wlen
+
+        # Reconstruct all tokens in order
+        extra_idx = 0
+        main_idx = 0
+        words = []
+
+        for token_pos in range(count):
+            if token_pos in blanks:
+                # This is a blanked tier-1 token
+                rank = blanks[token_pos]
+                word = self.dictionary.rank_to_word(rank)
+                if word is None:
+                    word = "[RANK:%d]" % rank
+                # Blanked tokens are always lowercase, no trailing
+                words.append(word)
+            else:
+                # Normal main-stream token
+                if main_idx >= len(main_token_data):
+                    words.append("[MISSING]")
+                    main_idx += 1
+                    continue
+                rank, is_cap, trail = main_token_data[main_idx]
+                main_idx += 1
+
+                if rank == 0:
+                    if extra_idx < len(extra_words):
+                        word = extra_words[extra_idx]
+                        extra_idx += 1
+                    else:
+                        word = "[UNK]"
+                else:
+                    word = self.dictionary.rank_to_word(rank)
+                    if word is None:
+                        word = "[RANK:%d]" % rank
+                    if is_cap and word and word[0].islower():
+                        word = word[0].upper() + word[1:]
+
+                trailing = _TRAIL_STR_V4.get(trail, "")
+                words.append(word + trailing)
 
         return " ".join(words)
 

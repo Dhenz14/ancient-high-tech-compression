@@ -33,7 +33,23 @@ Phase 9  → Visual Encoding / Scanner (Readability Layer)
 
 ---
 
-## Phase 1 — Trigram Phrases
+## Phase 1 — Trigram Phrases ❌ DITCHED
+
+**Result**: 2 trigrams survived strict Stage 2 brotli gate ("of the old" +7B, "is one of" +6B).
+Combined pre-brotli savings: 13 bytes. SA re-training with the expanded dictionary
+found a worse local minimum (48 improvements vs v2.0's 66), losing 47 bytes total.
+Net: −47 bytes. Clear regression on 7/11 texts.
+
+**Root cause**: SA variance (~30-50 bytes) is larger than trigram gains (~13 bytes).
+Adding phrases reshuffles the tier-2 landscape, causing SA to converge differently.
+Signal is drowned by noise.
+
+**Infrastructure kept**: `_merge_phrases` now handles trigrams-first, and `mine_trigrams`
+works correctly. The mechanism is sound; the signal just isn't strong enough.
+
+---
+
+## Phase 1 — Trigram Phrases (archived)
 
 ### What it is
 Currently the phrase dictionary contains 23 bigrams (2-word phrases like "in the",
@@ -89,7 +105,23 @@ discard and stay at v2.0. Lock and tag if any improvement is found.
 
 ---
 
-## Phase 2 — Phrase Dictionary Expansion (50+ Phrases)
+## Phase 2 — Phrase Dictionary Expansion ❌ DITCHED
+
+**Result**: Same root problem as Phase 1. The 23 bigrams already in the dictionary
+are the best ones — they were selected with a strict brotli gate. Lowering the
+threshold to add marginal bigrams produces gains of 1–3 bytes pre-brotli, which is
+well within SA variance (~30-50 bytes). Any marginal addition risks SA finding a
+worse local minimum that erases the gain and then some.
+
+**Root cause**: SA noise dominates signal at this margin. The dictionary expansion
+idea only makes sense after SA variance is brought under control (Phase 6) or after
+a format change increases tier-2 diversity.
+
+**Decision**: Skip. The 23 bigrams stay. Move to Phase 3.
+
+---
+
+## Phase 2 — Phrase Dictionary Expansion (50+ Phrases) (archived)
 
 ### What it is
 The current 23 bigrams were selected with a conservative savings threshold. Lowering
@@ -120,7 +152,29 @@ smaller gains. Stop adding phrases when the marginal gain per phrase drops below
 
 ---
 
-## Phase 3 — Blank System: Tier-1 Prototype
+## Phase 3 — Blank System: Tier-1 Prototype ❌ DITCHED
+
+**Result**: 8/8 texts regressed. Total: +92 bytes worse post-brotli across all benchmark texts.
+Article x1: +12 bytes. Story: +14 bytes. All mixed: +32 bytes.
+
+**Root cause**: Tier-1 tokens (ranks 1-7) cost 1 byte in the main stream. The blank
+section stores rank (1 byte) + delta_position (1 byte) = 2 bytes per blank. Net per
+blank = +1 byte overhead before brotli. For 55 blanks in Article x1: +55 bytes pre-brotli
+(499→556). Brotli recovers ~43 bytes of structure benefit, but final delta is still −12.
+
+**The fundamental math**: blanking tier-1 tokens can NEVER break even pre-brotli when
+position storage costs ≥ savings. The only viable blank system requires:
+  (a) blanking tier-2+ tokens (2 bytes each), AND
+  (b) multiple blanks sharing overhead amortization
+Phase 4 needs to be redesigned around this constraint — not tier-1 words.
+
+**Infrastructure kept**: V5 encoder/decoder in `blank_encoder.py` + decoder.py proves
+the mechanism works (100% round-trip on all 21 tests). The puzzle-solving concept is
+sound — just needs a different target tier.
+
+---
+
+## Phase 3 — Blank System: Tier-1 Prototype (archived)
 
 ### What it is
 The most novel idea in this codebase. Instead of storing every word in the stream,
@@ -480,8 +534,8 @@ Only after Hive deployment (Phase 8) is stable and the format is truly locked.
 
 | Phase | What | Effort | Expected Gain | Revert if... |
 |-------|------|--------|---------------|--------------|
-| 1 | Trigram phrases | Low | +1–2% | No trigram passes brotli screen |
-| 2 | Expand phrase dict (50+) | Low | +0.5–1.5% | Marginal gain < overhead |
+| 1 | Trigram phrases | Low | ❌ DITCHED | SA noise > signal |
+| 2 | Expand phrase dict (50+) | Low | ❌ DITCHED | SA noise > signal |
 | 3 | Blank system prototype (tier-1) | Medium | +0–3% (uncertain) | Post-brotli neutral or negative |
 | 4 | Blank system full cascade | High | +2–5% | Phase 3 showed no gain |
 | 5 | Morphological fallback | Medium | +3–5% on formal text | Any roundtrip failure |
