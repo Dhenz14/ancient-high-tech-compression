@@ -18,6 +18,16 @@ from collections import Counter
 
 import nltk
 
+# Benchmark texts used for phrase scoring (same as SA_TEXTS in bench_rank_optimizer.py).
+# Must match the actual benchmark texts so phrase selection targets the real use case.
+_ARTICLE = "The history of science is a story of human curiosity and determination. From the ancient Greeks who first asked questions about the nature of the world to the modern researchers who probe the depths of space and the structure of atoms, people have always been driven to understand the universe around them. In the beginning, science was not separate from philosophy. Thinkers like Aristotle and Plato tried to explain the world through reason alone, without the benefit of experiments or measurements. It was not until the Renaissance that the scientific method began to take shape. Francis Bacon argued that knowledge should be built on observation and experiment, not just logic and tradition. Galileo turned his telescope to the sky and discovered that the earth was not the center of the universe. Newton showed that the same force that makes an apple fall from a tree also keeps the moon in orbit around the earth. These discoveries changed the way people thought about the world and their place in it. The industrial revolution brought science into everyday life. Steam engines, railways, and factories transformed society. Medicine advanced as doctors began to understand the causes of disease. In the twentieth century, science gave us computers, space travel, and the ability to split the atom. Today, science continues to push the boundaries of what we know and what we can do. From artificial intelligence to gene therapy, the frontiers of knowledge are expanding faster than ever before."
+_BLOG = "I was walking down the street yesterday when I saw something that completely changed my perspective on life. There was an old man sitting on a bench, feeding pigeons, and he looked so peaceful and content. I stopped and talked to him for a while. He told me he had been coming to that same bench every day for thirty years, ever since his wife passed away. He said the pigeons were his friends now, and they never judged him or asked him to be anything other than what he was. I think about that conversation often. In our busy lives, we forget that happiness does not come from having more things or being more successful. It comes from simple moments of connection and peace. The old man on the bench had figured out something that most of us spend our whole lives searching for."
+_PHRASE_SCORE_TEXTS = [
+    " ".join(_ARTICLE.split()),
+    " ".join(_BLOG.split()),
+    " ".join((_ARTICLE + " " + _BLOG).split()),
+]
+
 # Download required NLTK data
 print("Downloading NLTK data...")
 nltk.download('words', quiet=True)
@@ -97,6 +107,40 @@ def collect_all_words():
     return all_words
 
 
+def mine_and_add_phrases(freq, all_words):
+    """
+    Phase 3: mine bigram phrases and add them to the word pool.
+
+    Scores each candidate by actual brotli delta using the current
+    optimized_dictionary_cache.json as baseline. Phrases are added to
+    all_words (set) and their bigram frequency added to freq (dict).
+    """
+    opt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "optimized_dictionary_cache.json")
+    if not os.path.exists(opt_path):
+        print("  [phrases] optimized_dictionary_cache.json not found — skipping phrase mining")
+        return
+
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from src.sequential.phrase_miner import mine_phrases
+    except ImportError as e:
+        print(f"  [phrases] Could not import phrase_miner: {e} — skipping")
+        return
+
+    # Use actual benchmark texts for scoring — same as SA_TEXTS in bench_rank_optimizer.py.
+    # Brown corpus samples would select phrases common in Brown but rare in our benchmarks.
+    phrases = mine_phrases(opt_path, _PHRASE_SCORE_TEXTS, min_freq=30, max_phrases=500, verbose=True)
+
+    added = 0
+    for phrase, savings, bigram_count in phrases:
+        all_words.add(phrase)
+        freq[phrase] = bigram_count
+        added += 1
+
+    print(f"  [phrases] Added {added} phrases to word pool")
+
+
 def build_dictionary():
     """Build the complete frequency-ranked dictionary."""
     # Step 1: Get frequency data
@@ -104,6 +148,10 @@ def build_dictionary():
 
     # Step 2: Get all known words
     all_words = collect_all_words()
+
+    # Step 3: Phase 3 — mine and add bigram phrases
+    print("\nPhase 3: Mining phrases...")
+    mine_and_add_phrases(freq, all_words)
 
     # Step 3: Rank words by frequency (most frequent = rank 1)
     # Words with frequency data get ranked first, then remaining words alphabetically

@@ -113,16 +113,31 @@ class RankOptimizer:
         self._all_words = set(self._original_ranks.keys())
 
     def build_brown_frequencies(self) -> Dict[str, int]:
-        """Build word frequency map from Brown corpus only (no Gutenberg)."""
+        """Build word frequency map from Brown corpus only (no Gutenberg).
+
+        Also counts bigram frequencies for known phrases (entries with a space),
+        so phrases retain tier-2 placement after re-ranking.
+        """
         import nltk
         nltk.download('brown', quiet=True)
         from nltk.corpus import brown
 
         freq: Counter = Counter()
+        words_lower = []
         for word in brown.words():
             w = word.lower().strip()
             if w.isalpha() and len(w) >= 1:
                 freq[w] += 1
+                words_lower.append(w)
+
+        # Count bigram frequencies for dictionary phrases
+        known_phrases = {w for w in self._all_words if ' ' in w}
+        if known_phrases:
+            for i in range(len(words_lower) - 1):
+                bigram = words_lower[i] + ' ' + words_lower[i + 1]
+                if bigram in known_phrases:
+                    freq[bigram] += 1
+
         return dict(freq)
 
     def rerank_by_frequency(self, freq: Optional[Dict[str, int]] = None) -> Dict[str, int]:

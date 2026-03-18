@@ -145,6 +145,11 @@ class Dictionary:
     def size(self) -> int:
         return len(self._word_to_rank)
 
+    @property
+    def phrases(self) -> frozenset:
+        """All multi-word dictionary entries (keys that contain a space)."""
+        return frozenset(w for w in self._word_to_rank if ' ' in w)
+
     def export_cache(self, path: str):
         """Export dictionary to JSON cache file."""
         with open(path, 'w', encoding='utf-8') as f:

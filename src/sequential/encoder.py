@@ -108,6 +108,7 @@ class SequentialEncoder:
 
     def __init__(self, dictionary: Optional[Dictionary] = None):
         self.dictionary = dictionary or Dictionary()
+        self._phrases: frozenset = self.dictionary.phrases
 
     def encode(self, text: str) -> bytes:
         if not text or not text.strip():
@@ -231,4 +232,40 @@ class SequentialEncoder:
 
             result.append((original, lowered, caps, lead_code, trail_code))
 
+        if self._phrases:
+            result = self._merge_phrases(result)
+        return result
+
+    def _merge_phrases(self, tokens: List[Tuple[str, str, int, int, int]]) -> List[Tuple[str, str, int, int, int]]:
+        """
+        Post-processing pass: merge adjacent token pairs that form a known phrase.
+
+        Merge conditions (all must hold):
+          - combined lowercased form is in the phrase dictionary
+          - first token has no trailing punct (T_NONE)
+          - second token has no leading punct (L_NONE)
+          - caps: (C_LOWER, C_LOWER) or (C_TITLE, C_LOWER) only
+            catches "in a world" and "In a world" — skips "IN A", "in A", etc.
+        """
+        result = []
+        i = 0
+        while i < len(tokens):
+            if i + 1 < len(tokens):
+                orig_i, word_i, caps_i, lead_i, trail_i = tokens[i]
+                orig_j, word_j, caps_j, lead_j, trail_j = tokens[i + 1]
+                if (trail_i == T_NONE and lead_j == L_NONE
+                        and caps_i in (C_LOWER, C_TITLE) and caps_j == C_LOWER):
+                    phrase_key = word_i + ' ' + word_j
+                    if phrase_key in self._phrases:
+                        result.append((
+                            orig_i + ' ' + orig_j,
+                            phrase_key,
+                            caps_i,   # C_LOWER or C_TITLE preserved
+                            lead_i,
+                            trail_j,
+                        ))
+                        i += 2
+                        continue
+            result.append(tokens[i])
+            i += 1
         return result
