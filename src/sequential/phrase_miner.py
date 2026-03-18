@@ -105,16 +105,20 @@ def mine_phrases(
     min_freq: int = 30,
     max_phrases: int = 500,
     verbose: bool = True,
+    screen_text: str = None,
 ) -> List[Tuple[str, int, int]]:
     """
     Mine and score bigram phrases for dictionary inclusion.
 
     Args:
         dictionary_cache_path: Path to current optimized dictionary JSON.
-        benchmark_texts: Texts used for brotli scoring (typically Article, Blog, Mixed).
+        benchmark_texts: Texts used for Stage 2 precise brotli scoring.
         min_freq: Minimum Brown corpus bigram frequency to consider.
         max_phrases: Maximum number of phrases to return.
         verbose: Print progress and results.
+        screen_text: Text used for Stage 1 fast brotli screen (brotli q=5).
+                     Should be large enough for brotli to detect savings reliably
+                     (ideally 5000+ words). If None, uses benchmark_texts[0].
 
     Returns:
         List of (phrase, net_brotli_savings, bigram_count) sorted by savings descending.
@@ -186,23 +190,30 @@ def mine_phrases(
                   f"phrase@rank{pr}={_bytes_for_rank(pr)}B  "
                   f"saves {spo}B/occ  expected={cnt * spo:,}B total")
 
-    # Pre-tokenize benchmark texts once
+    # Pre-tokenize benchmark texts once (used for Stage 2 precise scoring)
     encoder = SequentialEncoder()
     token_lists = [encoder._tokenize(text) for text in benchmark_texts]
+
+    # Pre-tokenize screen text for Stage 1 (separate corpus for reliable fast screening)
+    if screen_text is not None:
+        screen_tokens = [encoder._tokenize(screen_text)]
+    else:
+        screen_tokens = token_lists  # fallback: use benchmark_texts[0] via _score_quick
 
     # ── Stage 1: Quick screen ──────────────────────────────────────────────
     n_screen = min(len(candidates), 1000)
     if verbose:
-        print(f"\nStage 1: quick screen {n_screen} candidates (brotli q=5, text[0])...")
+        screen_label = f"screen corpus ({len(screen_text.split()) if screen_text else 'benchmark[0]'} words)"
+        print(f"\nStage 1: quick screen {n_screen} candidates (brotli q=5, {screen_label})...")
 
-    base_quick = _score_quick(token_lists, rank_map)
+    base_quick = _score_quick(screen_tokens, rank_map)
     quick_scored = []
 
     for w1, w2, cnt, _ in candidates[:n_screen]:
         phrase = w1 + ' ' + w2
         phrase_rank = estimate_rank(cnt)
         rank_map[phrase] = phrase_rank
-        merged = _merge_tokens_for_phrase(token_lists, w1, w2)
+        merged = _merge_tokens_for_phrase(screen_tokens, w1, w2)
         score = _score_quick(merged, rank_map)
         del rank_map[phrase]
         quick_scored.append((w1, w2, cnt, base_quick - score))
