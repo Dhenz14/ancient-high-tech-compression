@@ -147,8 +147,13 @@ Just the top 5 bigrams save ~22 bytes in Stage 1. After brotli: ~8-12 bytes net.
 ### What to Build
 
 **3.1: Phrase dictionary**
-- Mine Brown corpus for top 1,000-2,000 bigrams by frequency
+- Mine Brown corpus for top 5,000 bigram candidates by frequency (cheap first pass)
 - Filter: both words must be in dictionary, combined frequency > 50
+- **Score each candidate by actual brotli savings** using the fast-encode path from
+  `rank_optimizer.py`: encode benchmark corpus with/without phrase → measure brotli delta
+- Rank by net brotli bytes saved (not raw frequency — "was not" 3× saves more than
+  "the world" 3× because "not" encodes larger than "world")
+- Keep top 500-1,000 phrases that each save ≥ 2 bytes net on the benchmark corpus
 - Store phrases in dictionary with dedicated rank range (after single words)
 - Format: `"of the": rank_X` — phrase stored as single dictionary entry
 
