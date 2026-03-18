@@ -264,6 +264,113 @@ class RankOptimizer:
 
         return best_ranks
 
+    def optimize_crosstier_sa(
+        self,
+        initial_ranks: Dict[str, int],
+        benchmark_texts: List[str],
+        n_iterations: int = 5000,
+        seed: int = 42,
+        verbose: bool = True,
+        start_temp: float = 1.0,
+        cooling_rate: float = 0.999,
+    ) -> Dict[str, int]:
+        """
+        Phase 3: Cross-tier SA refinement.
+
+        Extends the swap pool beyond tier-2 to include tier-3 words that appear
+        in benchmark_texts. This allows SA to restore words demoted by Phase 1
+        (Brown re-rank) back to tier-2 when it benefits compression.
+
+        Intended as a fine-tuning pass after optimize_tier2_sa, starting from
+        that method's output. Uses lower temperature (start_temp=1.0) since the
+        rank assignment is already well-optimised and we only want targeted fixes.
+
+        Args:
+            initial_ranks:    Starting rank map (typically Phase 2 output).
+            benchmark_texts:  Texts to score — include any genres not in Phase 2.
+            n_iterations:     SA iterations (default 5000).
+            seed:             Random seed.
+            verbose:          Print progress.
+            start_temp:       Initial temperature (default 1.0, lower than Phase 2).
+            cooling_rate:     Cooling per iteration (default 0.999).
+
+        Returns:
+            Refined {word: rank} mapping.
+        """
+        rng = random.Random(seed)
+
+        # Pre-tokenize benchmark texts
+        encoder = SequentialEncoder()
+        token_lists = [encoder._tokenize(text) for text in benchmark_texts]
+
+        # Tier-2 words
+        tier2_words = set(w for w, r in initial_ranks.items()
+                          if TIER2_MIN_RANK <= r <= TIER2_MAX_RANK)
+
+        # Tier-3 words that appear in benchmark texts — eligible for promotion
+        training_words: set = set()
+        for tokens in token_lists:
+            for _, word, caps, lead, trail in tokens:
+                if caps not in (C_UPPER, C_MIXED) and lead == L_NONE and trail not in _V4_RARE_TRAIL:
+                    training_words.add(word)
+        tier3_candidates = {
+            w for w in training_words
+            if w in initial_ranks and initial_ranks[w] > TIER2_MAX_RANK
+        }
+
+        pool = list(tier2_words | tier3_candidates)
+        if len(pool) < 2:
+            return initial_ranks
+
+        if verbose:
+            print(f"Cross-tier pool: {len(pool)} words "
+                  f"({len(tier2_words)} tier-2 + {len(tier3_candidates)} tier-3 candidates)")
+
+        ranks = dict(initial_ranks)
+        best_score = _score(token_lists, ranks)
+        current_score = best_score
+        best_ranks = dict(ranks)
+
+        temp = start_temp
+        min_temp = 0.001
+        improvements = 0
+
+        if verbose:
+            print(f"SA start: {best_score} bytes")
+
+        for i in range(n_iterations):
+            w1, w2 = rng.sample(pool, 2)
+            r1, r2 = ranks[w1], ranks[w2]
+            ranks[w1], ranks[w2] = r2, r1
+
+            new_score = _score(token_lists, ranks)
+            delta = new_score - current_score
+
+            accept = delta < 0 or (
+                temp > min_temp and delta / temp < 50
+                and rng.random() < math.exp(-delta / temp)
+            )
+            if accept:
+                current_score = new_score
+                if new_score < best_score:
+                    best_score = new_score
+                    best_ranks = dict(ranks)
+                    improvements += 1
+            else:
+                ranks[w1], ranks[w2] = r1, r2
+
+            temp = max(temp * cooling_rate, min_temp)
+
+            if verbose and (i + 1) % 1000 == 0:
+                print(f"  iter {i+1}/{n_iterations}: best={best_score} "
+                      f"current={current_score} temp={temp:.4f} "
+                      f"improvements={improvements}")
+
+        if verbose:
+            print(f"SA done: {best_score} bytes ({improvements} improvements)")
+
+        return best_ranks
+
     def optimize(
         self,
         benchmark_texts: Optional[List[str]] = None,

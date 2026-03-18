@@ -46,8 +46,8 @@ texts = {
     "All mixed":   _ALL,
 }
 
-# 6 diverse texts for SA optimization (confirmed sweet spot at 5 genres + ALL).
-# Adding INFORMAL to SA training hurts existing results — it generalizes without training.
+# Phase 2 SA training: 6 diverse formal texts (sweet spot — INFORMAL excluded here
+# because it causes Phase 2 to trade formal-text gains for informal-text gains).
 SA_TEXTS = [
     " ".join(NEWS.split()),
     " ".join(ARTICLE.split()),
@@ -56,6 +56,11 @@ SA_TEXTS = [
     " ".join(STORY.split()),
     _ALL,
 ]
+
+# Phase 3 cross-tier SA training: all 7 texts including INFORMAL.
+# Phase 3 extends the SA pool to include tier-3 words appearing in these texts,
+# letting the optimizer restore colloquial words demoted by Phase 1 back to tier-2.
+SA_TEXTS_7 = SA_TEXTS + [" ".join(INFORMAL.split())]
 
 
 def main():
@@ -66,6 +71,8 @@ def main():
     print()
 
     opt = RankOptimizer(DICT_PATH)
+
+    # Phase 1 + 2: Brown re-rank then tier-2-only SA on 6 formal texts
     optimized_ranks = opt.optimize(
         benchmark_texts=SA_TEXTS,
         n_iterations=20000,
@@ -74,6 +81,20 @@ def main():
         start_temp=3.0,
         cooling_rate=0.9993,
     )
+
+    # Phase 3: Cross-tier SA — expands pool to tier-3 words appearing in training
+    # texts, fixing genre regressions (e.g. colloquial words demoted by Phase 1).
+    print("\nPhase 3: Cross-tier SA refinement (7 texts incl. Informal)...")
+    optimized_ranks = opt.optimize_crosstier_sa(
+        optimized_ranks,
+        benchmark_texts=SA_TEXTS_7,
+        n_iterations=5000,
+        seed=42,
+        verbose=True,
+        start_temp=1.0,
+        cooling_rate=0.999,
+    )
+
     opt.save(optimized_ranks, OPT_PATH)
     print()
 
