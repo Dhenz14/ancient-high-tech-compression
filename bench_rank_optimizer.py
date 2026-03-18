@@ -84,11 +84,12 @@ def main():
 
     # Phase 3: Cross-tier SA — expands pool to tier-3 words appearing in training
     # texts, fixing genre regressions (e.g. colloquial words demoted by Phase 1).
+    # 20K iters: SA still finding improvements well past 5K (180 improvements vs 66).
     print("\nPhase 3: Cross-tier SA refinement (7 texts incl. Informal)...")
     optimized_ranks = opt.optimize_crosstier_sa(
         optimized_ranks,
         benchmark_texts=SA_TEXTS_7,
-        n_iterations=5000,
+        n_iterations=20000,
         seed=42,
         verbose=True,
         start_temp=1.0,
