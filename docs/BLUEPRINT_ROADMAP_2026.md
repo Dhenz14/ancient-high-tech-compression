@@ -15,11 +15,10 @@
 
 ### Approach B: Sequential Rank Stream v3 (`src/sequential/`) — CURRENT BEST
 
-- **30.8:1 on Article x10** (merged varint ranks + brotli stage 2)
-- **Beats brotli standalone on Article x1 (471 vs 477 bytes, +1.3%)**
-- **Beats brotli standalone on blog posts (285 vs 325 bytes, +12.3%)**
-- **Beats brotli standalone on mixed text (694 vs 757 bytes, +8.3%)**
-- **Within 1% of brotli on repeated articles**
+- **36.3:1 on Article x10** (merged varint ranks + brotli stage 2)
+- **Beats brotli on ALL 6 benchmarks by 14-22%** (expanded dictionary + AI-optimized ranks)
+- Article x1: **409 vs 477** (+14.3%), Blog: **253 vs 325** (+22.2%), Mixed: **614 vs 757** (+18.9%)
+- Dictionary expanded to include inflected forms: +14,331 Brown + 12,989 Gutenberg words
 - AI-optimized rank assignment: Brown re-rank + simulated annealing (+2.8% vs frequency-only)
 - v3 format: merged varint (rank*32+variant), extra section for ALL CAPS/mixed/leading/unknown
 - 95 dedicated tests: contractions, ALL CAPS, mixed case, leading/trailing punct, unicode, dialogue, rank optimizer
