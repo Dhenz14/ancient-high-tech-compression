@@ -12,6 +12,7 @@ v2: VARIANT_MULT=32, inline word bytes for rank=0 tokens (lowercased).
 
 from typing import Optional
 from ..wordid.dictionary import Dictionary
+from ..morphology.inflector import Inflector
 
 
 VERSION_V4 = 0x04
@@ -84,6 +85,8 @@ class SequentialDecoder:
         version = blob[0]
         if version == VERSION_V4:
             return self._decode_v4(blob)
+        elif version == 0x06:
+            return self._decode_v6(blob)
         elif version == 0x05:
             return self._decode_v5(blob)
         elif version == VERSION_V3:
@@ -143,6 +146,101 @@ class SequentialDecoder:
         for rank, is_cap, trail in token_data:
             if rank == 0:
                 # Extra section: original casing (and rare trailing) already in word
+                if extra_idx < len(extra_words):
+                    word = extra_words[extra_idx]
+                    extra_idx += 1
+                else:
+                    word = "[UNK]"
+            else:
+                word = self.dictionary.rank_to_word(rank)
+                if word is None:
+                    word = "[RANK:%d]" % rank
+                if is_cap and word and word[0].islower():
+                    word = word[0].upper() + word[1:]
+
+            trailing = _TRAIL_STR_V4.get(trail, "")
+            words.append(word + trailing)
+
+        return " ".join(words)
+
+    def _decode_v6(self, blob: bytes) -> str:
+        """
+        Decode v6 morphological fallback blob.
+
+        Layout: [0x06][count:3][main_stream][extra_section]
+
+        Extra section entries:
+          Normal:       [length: 1 (1-254)][bytes: length]
+          Morph escape: [0x00: 1][base_rank: LEB128][flag_caps: 1]
+                          flag_caps bits 6-0: morph_flag
+                          flag_caps bit 7: 1=title_case, 0=lower_case
+
+        Main stream is identical to v4 (same variant/caps/trailing logic).
+        """
+        _VM = 16
+        count = (blob[1] << 16) | (blob[2] << 8) | blob[3]
+        if count == 0:
+            return ""
+
+        inflector = Inflector()
+
+        # Pass 1: scan main stream
+        offset = 4
+        token_data = []  # (rank, is_cap, trail_code)
+
+        for _ in range(count):
+            if offset >= len(blob):
+                token_data.append((0, False, 0))
+                continue
+            unified, consumed = _decode_varint(blob, offset)
+            offset += consumed
+            rank = unified // _VM
+            variant = unified % _VM
+            is_cap = bool((variant >> 3) & 1)
+            trail = variant & 0x07
+            token_data.append((rank, is_cap, trail))
+
+        # Pass 2: read extra section (with morph escape support)
+        extra_words = []
+        while offset < len(blob):
+            length = blob[offset]
+            offset += 1
+            if length == 0x00:
+                # Morph escape: [base_rank: LEB128][flag_caps: 1]
+                if offset >= len(blob):
+                    extra_words.append("[MORPH_ERR]")
+                    break
+                base_rank, consumed = _decode_varint(blob, offset)
+                offset += consumed
+                if offset >= len(blob):
+                    extra_words.append("[MORPH_ERR]")
+                    break
+                flag_caps = blob[offset]
+                offset += 1
+                morph_flag = flag_caps & 0x7F
+                is_title = bool(flag_caps >> 7)
+                base_word = self.dictionary.rank_to_word(base_rank)
+                if base_word is None:
+                    extra_words.append("[RANK:%d]" % base_rank)
+                    continue
+                word = inflector.inflect(base_word, morph_flag)
+                if is_title and word and word[0].islower():
+                    word = word[0].upper() + word[1:]
+                extra_words.append(word)
+            else:
+                # Normal word: [length][bytes]
+                if offset + length > len(blob):
+                    break
+                word = blob[offset:offset + length].decode('utf-8', errors='replace')
+                extra_words.append(word)
+                offset += length
+
+        # Pass 3: reconstruct (same as v4)
+        extra_idx = 0
+        words = []
+
+        for rank, is_cap, trail in token_data:
+            if rank == 0:
                 if extra_idx < len(extra_words):
                     word = extra_words[extra_idx]
                     extra_idx += 1

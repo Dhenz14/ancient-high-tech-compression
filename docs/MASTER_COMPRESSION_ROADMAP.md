@@ -536,9 +536,9 @@ Only after Hive deployment (Phase 8) is stable and the format is truly locked.
 |-------|------|--------|---------------|--------------|
 | 1 | Trigram phrases | Low | ❌ DITCHED | SA noise > signal |
 | 2 | Expand phrase dict (50+) | Low | ❌ DITCHED | SA noise > signal |
-| 3 | Blank system prototype (tier-1) | Medium | +0–3% (uncertain) | Post-brotli neutral or negative |
+| 3 | Blank system prototype (tier-1) | Medium | ❌ DITCHED | +92 bytes, all texts worse |
 | 4 | Blank system full cascade | High | +2–5% | Phase 3 showed no gain |
-| 5 | Morphological fallback | Medium | +3–5% on formal text | Any roundtrip failure |
+| 5 | Morphological fallback | Medium | ✅ DONE | −8 bytes total, 0 regressions |
 | 6 | SA re-training (maintenance) | Low | +0.1–0.5% per cycle | Never regresses (pure optimization) |
 | 7 | Cross-sentence blank cascade | High | +0.5–1% | Phase 4 showed no gain |
 | 8 | Hive deployment | High | N/A (infrastructure) | Not a compression phase |
