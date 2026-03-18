@@ -28,7 +28,9 @@ TECH = "Version control is one of the most valuable tools available to any softw
 
 STORY = "The library was nearly empty on that cold Tuesday morning. Margaret had been coming here for years, ever since she moved to the city, and she knew every corner of the old building. She settled into her usual chair beside the window and opened her book, but she found it hard to focus. There was something on her mind that she could not quite let go of. After a while, a young man sat down at the table across from her. She had noticed him before, always with a stack of notebooks and a worn leather bag. He caught her eye and smiled, and she nodded in return. Do you come here often, he asked, setting down his things. Most mornings, she said. It is the only place in the city where I can think clearly. He laughed softly. I know exactly what you mean. I had been working from home for almost a year before I found this place. I could not get anything done. They talked for a while about the neighborhood, about the books they were reading, about the small things in daily life that are easy to miss. Margaret found herself relaxing in a way she had not expected. She had been so caught up in her own worries that she had forgotten how good it felt to simply sit and talk with someone. By the time she looked up at the clock, more than an hour had passed. She gathered her things and stood to leave. Same time tomorrow, the young man asked. Perhaps, she said, and smiled. She stepped out into the cold air and felt, for the first time in weeks, that the day ahead might not be so difficult after all. The street was busy with the morning crowd, but she walked slowly, in no particular hurry."
 
-_ALL = " ".join((ARTICLE + " " + BLOG + " " + NEWS + " " + TECH + " " + STORY).split())
+INFORMAL = "okay so i finally tried that new coffee place everyone keeps talking about and honestly? totally worth it. the line was ridiculous but my friend was like just trust me and she was right. got this oat milk latte thing and it was so good i almost went back for a second one. also ran into someone i used to work with which was kind of awkward but whatever. we did the whole oh wow how are you thing for like two minutes and then both pretended we had somewhere to be. classic. anyway the rest of the day was pretty low key. finished that show i was watching which was a whole thing because the ending made absolutely no sense and now i have so many questions. texted my sister about it and she had thoughts. we ended up on the phone for like an hour just going back and forth about what it all meant. honestly one of my favorite kinds of conversations. made pasta for dinner because i did not feel like thinking about it. been doing that a lot lately. sometimes you just need the easy choice you know? feeling pretty good overall though. work has been stressful but i feel like i am getting a handle on things. slowly but surely. going to try to get to bed at a reasonable hour tonight because last week was a disaster on that front and i could really feel it by friday. anyway that is pretty much all that is going on. nothing dramatic. just regular life stuff. hope everyone is doing well out there."
+
+_ALL = " ".join((ARTICLE + " " + BLOG + " " + NEWS + " " + TECH + " " + STORY + " " + INFORMAL).split())
 
 texts = {
     "Article x1":  " ".join(ARTICLE.split()),
@@ -39,12 +41,13 @@ texts = {
     "News":        " ".join(NEWS.split()),
     "Tech doc":    " ".join(TECH.split()),
     "Story":       " ".join(STORY.split()),
+    "Informal":    " ".join(INFORMAL.split()),
     "Mixed (2)":   " ".join((ARTICLE + " " + BLOG).split()),
     "All mixed":   _ALL,
 }
 
-# 6 diverse texts for SA optimization and phrase scoring.
-# NEWS first: highest 2-byte bigram density, drives Stage 1 phrase screen.
+# 6 diverse texts for SA optimization (confirmed sweet spot at 5 genres + ALL).
+# Adding INFORMAL to SA training hurts existing results — it generalizes without training.
 SA_TEXTS = [
     " ".join(NEWS.split()),
     " ".join(ARTICLE.split()),
@@ -65,9 +68,11 @@ def main():
     opt = RankOptimizer(DICT_PATH)
     optimized_ranks = opt.optimize(
         benchmark_texts=SA_TEXTS,
-        n_iterations=5000,
+        n_iterations=20000,
         seed=42,
         verbose=True,
+        start_temp=3.0,
+        cooling_rate=0.9993,
     )
     opt.save(optimized_ranks, OPT_PATH)
     print()

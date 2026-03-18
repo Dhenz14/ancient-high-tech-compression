@@ -29,17 +29,19 @@ from .encoder import (
     C_LOWER, C_TITLE, C_UPPER, C_MIXED,
     L_NONE,
     VARIANT_MULT, VERSION,
+    _V4_RARE_TRAIL, _TRAIL_STRING,
     SequentialEncoder,
     _LEAD_CHAR,
 )
 
-# Tier boundaries (unified = rank * 32 + variant)
-# 1-byte: unified < 128 → ranks 1-3
-# 2-byte: 128 <= unified < 16384 → ranks 4-511
-# 3-byte: unified >= 16384 → ranks 512+
-TIER1_MAX_RANK = 3      # 1-byte tier
-TIER2_MAX_RANK = 511    # 2-byte tier
-TIER2_MIN_RANK = 4      # first 2-byte rank
+# Tier boundaries (unified = rank * VARIANT_MULT + variant)
+# v4 (VARIANT_MULT=16):
+#   1-byte: unified < 128 → ranks 1-7   (rank*16 < 128)
+#   2-byte: 128 <= unified < 16384 → ranks 8-1023
+#   3-byte: unified >= 16384 → ranks 1024+
+TIER1_MAX_RANK = 7       # last 1-byte rank
+TIER2_MIN_RANK = 8       # first 2-byte rank
+TIER2_MAX_RANK = 1023    # last 2-byte rank
 
 
 def _encode_varint_into(buf: bytearray, value: int):
@@ -64,19 +66,26 @@ def _fast_encode(tokens: List[Tuple[str, str, int, int, int]],
     for original, word, caps, lead, trail in tokens:
         rank = rank_map.get(word)
 
-        go_extra = (rank is None) or (caps in (C_UPPER, C_MIXED)) or (lead != L_NONE)
+        # v4: rare trailing codes go to extra section
+        is_rare_trail = trail in _V4_RARE_TRAIL
+        rare_trail_str = ''
+        if is_rare_trail:
+            rare_trail_str = _TRAIL_STRING[trail]
+            trail = 0  # T_NONE
+
+        go_extra = (rank is None) or (caps in (C_UPPER, C_MIXED)) or (lead != L_NONE) or is_rare_trail
 
         if not go_extra:
             is_cap = 1 if caps == C_TITLE else 0
-            variant = (is_cap << 4) | (trail & 0x0F)
+            variant = (is_cap << 3) | (trail & 0x07)  # v4: 4-bit variant
             unified = rank * VARIANT_MULT + variant
             _encode_varint_into(main_buf, unified)
         else:
-            variant = trail & 0x0F
+            variant = trail & 0x07  # v4: 3-bit trailing
             _encode_varint_into(main_buf, variant)
 
             lead_char = _LEAD_CHAR.get(lead, '')
-            extra_word = lead_char + original
+            extra_word = lead_char + original + rare_trail_str
             wb = extra_word.encode('utf-8')
             if len(wb) > 255:
                 wb = wb[:255]
@@ -174,6 +183,8 @@ class RankOptimizer:
         n_iterations: int = 5000,
         seed: int = 42,
         verbose: bool = True,
+        start_temp: float = 3.0,
+        cooling_rate: float = 0.997,
     ) -> Dict[str, int]:
         """
         Phase 2: Simulated annealing refinement of tier-2 ranks (4-511).
@@ -201,8 +212,8 @@ class RankOptimizer:
         best_ranks = dict(ranks)
 
         # SA parameters
-        temp = 3.0
-        cooling = 0.997
+        temp = start_temp
+        cooling = cooling_rate
         min_temp = 0.001
         improvements = 0
 
@@ -253,6 +264,8 @@ class RankOptimizer:
         n_iterations: int = 5000,
         seed: int = 42,
         verbose: bool = True,
+        start_temp: float = 3.0,
+        cooling_rate: float = 0.997,
     ) -> Dict[str, int]:
         """
         Full pipeline: Phase 1 (Brown re-rank) + Phase 2 (SA refinement).
@@ -262,6 +275,8 @@ class RankOptimizer:
             n_iterations: SA iterations (default 5000).
             seed: Random seed for reproducibility.
             verbose: Print progress.
+            start_temp: SA initial temperature (default 3.0).
+            cooling_rate: SA cooling multiplier per iteration (default 0.997).
 
         Returns:
             Optimized {word: rank} mapping.
@@ -294,6 +309,7 @@ class RankOptimizer:
             ranks = self.optimize_tier2_sa(
                 ranks, benchmark_texts,
                 n_iterations=n_iterations, seed=seed, verbose=verbose,
+                start_temp=start_temp, cooling_rate=cooling_rate,
             )
 
         return ranks

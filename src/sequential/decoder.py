@@ -1,22 +1,25 @@
 """
 Sequential Rank Stream Decoder.
 
-Supports v3 (merged varint) and v2 (legacy merged varint) formats.
+Supports v4 (current), v3 (previous), and v2 (legacy) formats.
 
-v3 extra section stores words with ORIGINAL CASING (no transformation needed).
-v2 extra section stores lowercased words (title case applied from variant bit).
+v4: VARIANT_MULT=16, 4-bit variant [caps:1][trailing:3], 8 trailing codes.
+    Rare trailing stored in extra section word (trailing appended to stored word).
+v3: VARIANT_MULT=32, 5-bit variant [caps:1][trailing:4], 16 trailing codes.
+    Extra section stores words with ORIGINAL CASING.
+v2: VARIANT_MULT=32, inline word bytes for rank=0 tokens (lowercased).
 """
 
 from typing import Optional
 from ..wordid.dictionary import Dictionary
 
+
+VERSION_V4 = 0x04
 VERSION_V3 = 0x03
 VERSION_V2 = 0x02
 
-VARIANT_MULT = 32
-
-# Trailing punct code -> string
-_TRAIL_STR = {
+# v3 trailing codes — hardcoded for backward compat, do not change
+_TRAIL_STR_V3 = {
     0:  "",
     1:  ".",
     2:  ",",
@@ -34,6 +37,21 @@ _TRAIL_STR = {
     14: ',"',
     15: '?"',
 }
+
+# v4 trailing codes (3 bits, 8 values — rare trailing is in extra section word)
+_TRAIL_STR_V4 = {
+    0: "",    # T_NONE
+    1: ".",   # T_PERIOD
+    2: ",",   # T_COMMA
+    3: "!",   # T_EXCLAIM
+    4: "?",   # T_QUESTION
+    5: "'",   # T_SQUOTE
+    6: '"',   # T_DQUOTE
+    7: '."',  # T_PERIOD_DQ
+}
+
+# Keep for any external code that imports _TRAIL_STR from this module
+_TRAIL_STR = _TRAIL_STR_V3
 
 
 def _decode_varint(data: bytes, offset: int):
@@ -59,17 +77,86 @@ class SequentialDecoder:
         self.dictionary = dictionary or Dictionary()
 
     def decode(self, blob: bytes) -> str:
-        """Decode blob to text. Handles v3 and v2 formats."""
+        """Decode blob to text. Handles v4, v3, and v2 formats."""
         if not blob or len(blob) < 4:
             return ""
 
         version = blob[0]
-        if version == VERSION_V3:
+        if version == VERSION_V4:
+            return self._decode_v4(blob)
+        elif version == VERSION_V3:
             return self._decode_v3(blob)
         elif version == VERSION_V2:
             return self._decode_v2(blob)
         else:
             raise ValueError("Unsupported sequential format version: %d" % version)
+
+    def _decode_v4(self, blob: bytes) -> str:
+        """
+        Decode v4 merged-varint blob.
+
+        Layout: [0x04][count:3][main_stream][extra_section]
+          unified = rank * 16 + variant  (VARIANT_MULT=16)
+          variant: 4-bit — bit 3 = caps, bits 0-2 = trailing code (0-7)
+          rank=0: extra section word (original casing; rare trailing appended by encoder)
+          rank>0: known word (title case from caps bit, trailing from lower 3 bits)
+        """
+        _VM = 16
+        count = (blob[1] << 16) | (blob[2] << 8) | blob[3]
+        if count == 0:
+            return ""
+
+        # Pass 1: scan main stream
+        offset = 4
+        token_data = []  # (rank, is_cap, trail_code)
+
+        for _ in range(count):
+            if offset >= len(blob):
+                token_data.append((0, False, 0))
+                continue
+            unified, consumed = _decode_varint(blob, offset)
+            offset += consumed
+
+            rank = unified // _VM
+            variant = unified % _VM
+            is_cap = bool((variant >> 3) & 1)  # bit 3
+            trail = variant & 0x07              # bits 0-2
+            token_data.append((rank, is_cap, trail))
+
+        # Pass 2: read extra section
+        extra_words = []
+        while offset < len(blob):
+            wlen = blob[offset]
+            offset += 1
+            if offset + wlen > len(blob):
+                break
+            word = blob[offset:offset + wlen].decode('utf-8', errors='replace')
+            extra_words.append(word)
+            offset += wlen
+
+        # Pass 3: reconstruct
+        extra_idx = 0
+        words = []
+
+        for rank, is_cap, trail in token_data:
+            if rank == 0:
+                # Extra section: original casing (and rare trailing) already in word
+                if extra_idx < len(extra_words):
+                    word = extra_words[extra_idx]
+                    extra_idx += 1
+                else:
+                    word = "[UNK]"
+            else:
+                word = self.dictionary.rank_to_word(rank)
+                if word is None:
+                    word = "[RANK:%d]" % rank
+                if is_cap and word and word[0].islower():
+                    word = word[0].upper() + word[1:]
+
+            trailing = _TRAIL_STR_V4.get(trail, "")
+            words.append(word + trailing)
+
+        return " ".join(words)
 
     def _decode_v3(self, blob: bytes) -> str:
         """
@@ -81,6 +168,7 @@ class SequentialDecoder:
             - rank>0: known word (title case from caps bit, trailing from lower 4 bits)
           extra_section: length-prefixed UTF-8 strings with original casing
         """
+        _VM = 32
         count = (blob[1] << 16) | (blob[2] << 8) | blob[3]
         if count == 0:
             return ""
@@ -96,8 +184,8 @@ class SequentialDecoder:
             unified, consumed = _decode_varint(blob, offset)
             offset += consumed
 
-            rank = unified // VARIANT_MULT
-            variant = unified % VARIANT_MULT
+            rank = unified // _VM
+            variant = unified % _VM
             is_cap = bool(variant & 0x10)
             trail = variant & 0x0F
             token_data.append((rank, is_cap, trail))
@@ -135,7 +223,7 @@ class SequentialDecoder:
                 if is_cap and word and word[0].islower():
                     word = word[0].upper() + word[1:]
 
-            trailing = _TRAIL_STR.get(trail, "")
+            trailing = _TRAIL_STR_V3.get(trail, "")
             words.append(word + trailing)
 
         return " ".join(words)

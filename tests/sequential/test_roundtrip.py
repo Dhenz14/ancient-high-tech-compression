@@ -343,7 +343,7 @@ class TestVarint:
 class TestBlobFormat:
     def test_version_byte(self, enc):
         blob = enc.encode("hello")
-        assert blob[0] == 0x03  # version 3
+        assert blob[0] == 0x04  # version 3
 
     def test_token_count(self, enc):
         blob = enc.encode("hello world foo")
@@ -352,7 +352,7 @@ class TestBlobFormat:
 
     def test_empty_blob(self, enc):
         blob = enc.encode("")
-        assert blob[0] == 0x03
+        assert blob[0] == 0x04
         count = (blob[1] << 16) | (blob[2] << 8) | blob[3]
         assert count == 0
 

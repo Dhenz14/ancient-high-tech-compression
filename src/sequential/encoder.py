@@ -1,25 +1,27 @@
 """
-Sequential Rank Stream Encoder v3 — Merged Varint Format.
+Sequential Rank Stream Encoder v4 — Merged Varint Format.
 
 Each token encodes word + caps + trailing punct as a SINGLE merged integer:
-  unified = rank * 32 + variant
-  variant = (is_title_case << 4) | trailing_punct_code
+  unified = rank * 16 + variant
+  variant = (is_title_case << 3) | trailing_punct_code
 
-This keeps the top 3 most common words ("the", "of", "and") as single bytes,
-which is optimal for brotli's stage-2 compression.
+v4 change from v3: VARIANT_MULT reduced 32→16 (5-bit→4-bit variant).
+This doubles tier-1 (3→7 words) and tier-2 (508→1016 words).
 
 Special cases stored in the extra section (rank=0 in main stream):
   - Unknown words (not in dictionary)
   - ALL CAPS words (e.g., "NASA", "THE") — original casing preserved
   - Mixed-case words (e.g., "iPhone") — original casing preserved
   - Words with leading punctuation (e.g., '"hello') — lead char prepended
+  - Known words with rare trailing punct (;  :  )  ]  -  ...  ,"  ?") —
+    trailing string appended to the stored extra word, T_NONE in variant
 
 All extra words are stored WITH ORIGINAL CASING (no transformation needed on decode).
-Trailing punct is still encoded in the variant bits even for extra-section tokens.
+Common trailing punct is still encoded in the variant bits even for extra-section tokens.
 
 Fixes over v2:
   - Contractions safe: 'don't', 'can't', etc. — apostrophe not stripped mid-word
-  - Multi-char trailing: '."' and ',"' encoded as single codes
+  - Multi-char trailing: '."' encoded as single code 7
   - ALL CAPS: "NASA", "THE" correctly recovered (was title-cased in v2)
   - Mixed case: "iPhone", "McDonald's" correctly recovered
   - Leading punct: '"hello', '(hello' correctly encoded
@@ -29,23 +31,40 @@ from typing import List, Tuple, Optional
 from ..wordid.dictionary import Dictionary
 
 
-# === Trailing punct codes (4 bits = 16 values) ===
-T_NONE       = 0
-T_PERIOD     = 1
-T_COMMA      = 2
-T_EXCLAIM    = 3
-T_QUESTION   = 4
-T_SEMICOLON  = 5
-T_COLON      = 6
-T_DQUOTE     = 7   # trailing "
-T_SQUOTE     = 8   # trailing ' (possessive)
-T_PAREN      = 9   # )
-T_BRACKET    = 10  # ]
-T_HYPHEN     = 11  # -
-T_ELLIPSIS   = 12  # ...
-T_PERIOD_DQ  = 13  # ."
+# === Trailing punct codes ===
+# v4 common codes (3 bits, 0-7): encoded in variant field
+T_NONE       = 0   # no trailing
+T_PERIOD     = 1   # .
+T_COMMA      = 2   # ,
+T_EXCLAIM    = 3   # !
+T_QUESTION   = 4   # ?
+T_SQUOTE     = 5   # ' (possessive / close single-quote)
+T_DQUOTE     = 6   # " (close double-quote)
+T_PERIOD_DQ  = 7   # ." (period-quote — common in dialogue)
+
+# v4 rare codes (8-15): word goes to extra section, trailing appended to stored word
+T_SEMICOLON  = 8   # ;
+T_COLON      = 9   # :
+T_PAREN      = 10  # )
+T_BRACKET    = 11  # ]
+T_HYPHEN     = 12  # -
+T_ELLIPSIS   = 13  # ...
 T_COMMA_DQ   = 14  # ,"
 T_QDQUOTE    = 15  # ?" or !"
+
+# Rare trailing codes: trigger extra-section path even for known words
+_V4_RARE_TRAIL = frozenset({
+    T_SEMICOLON, T_COLON, T_PAREN, T_BRACKET,
+    T_HYPHEN, T_ELLIPSIS, T_COMMA_DQ, T_QDQUOTE,
+})
+
+# Reverse lookup: code → trailing string (for rare trailing reconstruction)
+_TRAIL_STRING = {
+    T_NONE: '', T_PERIOD: '.', T_COMMA: ',', T_EXCLAIM: '!', T_QUESTION: '?',
+    T_SQUOTE: "'", T_DQUOTE: '"', T_PERIOD_DQ: '."',
+    T_SEMICOLON: ';', T_COLON: ':', T_PAREN: ')', T_BRACKET: ']',
+    T_HYPHEN: '-', T_ELLIPSIS: '...', T_COMMA_DQ: ',"', T_QDQUOTE: '?"',
+}
 
 # === Leading punct codes (for extra-section words) ===
 # These are only used internally to decide whether to store in extra section.
@@ -61,18 +80,18 @@ C_UPPER = 2   # ALL CAPS: "NASA"
 C_MIXED = 3   # mixed case: "iPhone"
 
 # === Format constants ===
-VARIANT_MULT = 32   # 5-bit variant: [caps:1][trailing:4]
-VERSION = 0x03
+VARIANT_MULT = 16   # 4-bit variant: [caps:1][trailing:3]
+VERSION = 0x04
 
 # === Lookup tables ===
 _TRAIL_SINGLE = {
     '.': T_PERIOD, ',': T_COMMA, '!': T_EXCLAIM, '?': T_QUESTION,
-    ';': T_SEMICOLON, ':': T_COLON, '"': T_DQUOTE, "'": T_SQUOTE,
-    ')': T_PAREN, ']': T_BRACKET, '-': T_HYPHEN,
+    "'": T_SQUOTE, '"': T_DQUOTE,
+    ';': T_SEMICOLON, ':': T_COLON, ')': T_PAREN, ']': T_BRACKET, '-': T_HYPHEN,
 }
 _TRAIL_MULTI = {
-    '."': T_PERIOD_DQ, ',"': T_COMMA_DQ,
-    '!"': T_QDQUOTE, '?"': T_QDQUOTE,
+    '."': T_PERIOD_DQ,
+    ',"': T_COMMA_DQ, '!"': T_QDQUOTE, '?"': T_QDQUOTE,
 }
 _LEAD_MAP = {'"': L_DQUOTE, '(': L_PAREN, '[': L_BRACKET}
 _LEAD_CHAR = {L_DQUOTE: '"', L_PAREN: '(', L_BRACKET: '[', L_NONE: ''}
@@ -122,24 +141,31 @@ class SequentialEncoder:
         for original, word, caps, lead, trail in tokens:
             rank = self.dictionary.word_to_rank(word)
 
+            # v4: rare trailing codes go to extra section; trailing appended to stored word
+            is_rare_trail = trail in _V4_RARE_TRAIL
+            rare_trail_str = ''
+            if is_rare_trail:
+                rare_trail_str = _TRAIL_STRING[trail]
+                trail = T_NONE
+
             # Determine if this token goes in the extra section:
-            # Unknown words, ALL CAPS, mixed case, or has leading punct
-            go_extra = (rank is None) or (caps in (C_UPPER, C_MIXED)) or (lead != L_NONE)
+            # Unknown words, ALL CAPS, mixed case, leading punct, or rare trailing
+            go_extra = (rank is None) or (caps in (C_UPPER, C_MIXED)) or (lead != L_NONE) or is_rare_trail
 
             if not go_extra:
                 # Normal known word: merge into single varint
                 is_cap = 1 if caps == C_TITLE else 0
-                variant = (is_cap << 4) | (trail & 0x0F)
+                variant = (is_cap << 3) | (trail & 0x07)  # v4: 4-bit variant
                 unified = rank * VARIANT_MULT + variant
                 main_buf.extend(_encode_varint(unified))
             else:
                 # Extra section: rank=0 in main stream
-                variant = trail & 0x0F  # caps bit=0, trailing only
-                main_buf.extend(_encode_varint(variant))  # varint(0-15) → rank=0
+                variant = trail & 0x07  # v4: 3-bit trailing (T_NONE for rare trailing)
+                main_buf.extend(_encode_varint(variant))  # varint(0-7) → rank=0
 
-                # Build extra word: leading punct char (if any) + original casing
+                # Build extra word: leading punct + original casing + rare trailing (if any)
                 lead_char = _LEAD_CHAR.get(lead, '')
-                extra_word = lead_char + original
+                extra_word = lead_char + original + rare_trail_str
                 wb = extra_word.encode('utf-8')
                 if len(wb) > 255:
                     wb = wb[:255]
