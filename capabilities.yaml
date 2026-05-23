@@ -1,0 +1,36 @@
+# capabilities.yaml — Ancient High-Tech Compression
+# Registers operator-visible surfaces for the HiveAI unified capability registry.
+# Organ: pancreas.token_economy (compression saves on-chain bytes / RC / token cost — pancreas's domain)
+# Source: README.md + src/sequential + src/wordid
+
+- name: sequential-rank-stream-encoder
+  organ: pancreas.token_economy
+  surface_type: compression_codec
+  surface_path: src/sequential/encoder.py
+  description: Stage-1 Sequential Rank Stream v4 encoder. Tokenizes text and emits a merged-varint blob where every token = rank * 16 + variant (4-bit variant carries title-case + trailing-punct). Phrase-aware tokenizer with 23 bigram phrases. Backward-compatible decoder dispatches on version byte (v2/v3/v4).
+  status: LIVE
+  source_file: src/sequential/encoder.py
+
+- name: two-stage-brotli-codec
+  organ: pancreas.token_economy
+  surface_type: compression_codec
+  surface_path: src/sequential/two_stage.py
+  description: Two-stage compression pipeline (Sequential Rank Stream v4 then brotli q=11). Beats raw brotli by 25.8% across 11 benchmarks spanning articles, blogs, news, tech docs, stories, informal/social writing. Best ratio 39.5:1 on repeated articles. Dictionary stored on Hive blockchain so per-file dictionary overhead is zero.
+  status: LIVE
+  source_file: src/sequential/two_stage.py
+
+- name: rank-dictionary
+  organ: pancreas.token_economy
+  surface_type: library_function
+  surface_path: src/wordid/dictionary.py
+  description: 249,777-word rank dictionary built from NLTK (Brown + Gutenberg + WordNet) including inflected forms plus 23 bigram phrases. Ranks AI-optimized via 3-phase Simulated-Annealing pipeline (Brown re-rank then intra-tier SA then cross-tier SA across 7 genres). Stored on-chain — free per document.
+  status: LIVE
+  source_file: src/wordid/dictionary.py
+
+- name: rank-optimizer-sa
+  organ: pancreas.token_economy
+  surface_type: library_function
+  surface_path: src/sequential/rank_optimizer.py
+  description: Simulated-annealing rank optimizer (Brown re-rank + intra-tier SA + cross-tier SA). Produces the AI-optimized rank assignment that beats brotli on every benchmark. Cross-tier phase extends pool to tier-3 candidates, recovering colloquial words demoted by Brown re-rank when brotli benefits.
+  status: LIVE
+  source_file: src/sequential/rank_optimizer.py
