@@ -36,8 +36,8 @@ class TokenizedDocument:
 LEADING_PUNCT = set('"\'([{')
 TRAILING_PUNCT = set('.,!?;:\'")}]')
 # Extended: handle smart quotes, em-dash, ellipsis
-LEADING_PUNCT_PATTERN = re.compile(r'^(["\'\(\[\{""''«]+)')
-TRAILING_PUNCT_PATTERN = re.compile(r'([.,!?;:\'\"\)\]\}""''»\-]+)$')
+LEADING_PUNCT_PATTERN = re.compile(r"""^(["'(\[{«]+)""")
+TRAILING_PUNCT_PATTERN = re.compile(r"""([.,!?;:'")\]\}»-]+)$""")
 
 
 class Tokenizer:
