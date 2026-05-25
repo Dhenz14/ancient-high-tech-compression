@@ -1702,7 +1702,7 @@ class SteppedPipelineProcessor:
 # Flask routes for web interface
 @app.route('/')
 def home():
-    """Main interface - serves the ArcHive UI with Archive/Reveal functionality"""
+    """Main interface - serves the Ancient High-Tech UI with archive/reveal functionality"""
     return send_from_directory('.', 'index.html')
 
 

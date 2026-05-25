@@ -4453,23 +4453,36 @@ def extract_endpoint():
 
 @app.route('/download/archive-data')
 def download_archive_data():
-    """Download ArcHive data export zip file"""
+    """Download Ancient High-Tech data export zip file"""
     import os
     zip_filename = None
-    
-    # Find the most recent ArcHive export zip file
+
+    # Prefer the current project prefix while retaining legacy export compatibility.
     for file in os.listdir('.'):
-        if file.startswith('ArcHive_Data_Export_') and file.endswith('.zip'):
+        if file.startswith('AncientHighTech_Data_Export_') and file.endswith('.zip'):
             zip_filename = file
             break
-    
+
+    if not zip_filename:
+        for file in os.listdir('.'):
+            if file.startswith('ArcHive_Data_Export_') and file.endswith('.zip'):
+                zip_filename = file
+                break
+
+    if zip_filename:
+        # Preserve the legacy filename on disk, but expose the current project name
+        # to download clients so new artifacts do not perpetuate stale branding.
+        download_filename = zip_filename.replace('ArcHive_Data_Export_', 'AncientHighTech_Data_Export_', 1)
+    else:
+        download_filename = None
+
     if not zip_filename or not os.path.exists(zip_filename):
         return jsonify({'error': 'Archive data export not found'}), 404
-    
+
     return send_file(
         zip_filename,
         as_attachment=True,
-        download_name=zip_filename,
+        download_name=download_filename,
         mimetype='application/zip'
     )
 
@@ -4688,14 +4701,14 @@ def verify_page(transaction_id):
             <!DOCTYPE html>
             <html>
             <head>
-                <title>ArcHive - Verification Not Found</title>
+                <title>Ancient High-Tech Compression - Verification Not Found</title>
                 <style>
                     body {{ font-family: Arial, sans-serif; margin: 40px; }}
                     .error {{ color: #d32f2f; background: #ffebee; padding: 20px; border-radius: 8px; }}
                 </style>
             </head>
             <body>
-                <h1>ArcHive Blockchain Verification</h1>
+                <h1>Hive Blockchain Verification</h1>
                 <div class="error">
                     <h2>Transaction Not Found</h2>
                     <p>Transaction ID: {transaction_id}</p>
@@ -4713,7 +4726,7 @@ def verify_page(transaction_id):
         <!DOCTYPE html>
         <html>
         <head>
-            <title>ArcHive - Blockchain Verification</title>
+            <title>Ancient High-Tech Compression - Blockchain Verification</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
                 .verification-header {{ background: #4caf50; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
@@ -4726,7 +4739,7 @@ def verify_page(transaction_id):
         </head>
         <body>
             <div class="verification-header">
-                <h1>🔗 ArcHive Blockchain Verification</h1>
+                <h1>🔗 Hive Blockchain Verification</h1>
                 <p>Content verified on Hive blockchain - Immutable and cryptographically secure</p>
             </div>
             
@@ -4750,7 +4763,7 @@ def verify_page(transaction_id):
             </div>
             
             <div style="margin-top: 30px; text-align: center; color: #666;">
-                <p>Powered by <strong>ArcHive</strong> - Cryptographic Content Archival System</p>
+                <p>Powered by <strong>Ancient High-Tech Compression</strong> - Cryptographic Content Archival System</p>
                 <p>This verification is generated directly from the Hive blockchain without external dependencies</p>
             </div>
         </body>
@@ -4762,14 +4775,14 @@ def verify_page(transaction_id):
         <!DOCTYPE html>
         <html>
         <head>
-            <title>ArcHive - Verification Error</title>
+            <title>Ancient High-Tech Compression - Verification Error</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 40px; }}
                 .error {{ color: #d32f2f; background: #ffebee; padding: 20px; border-radius: 8px; }}
             </style>
         </head>
         <body>
-            <h1>ArcHive Blockchain Verification</h1>
+            <h1>Hive Blockchain Verification</h1>
             <div class="error">
                 <h2>Verification Error</h2>
                 <p>Transaction ID: {transaction_id}</p>
@@ -6467,7 +6480,7 @@ def token_download(content_id):
                 'metadata': compressed_data.get('metadata', {}),
                 'compression_ratio': compressed_data.get('compression_ratio', 1),
                 'created_at': compressed_data.get('created_at', ''),
-                'format': 'ArcHive_Token_Storage_v1.0'
+                'format': 'AncientHighTech_Token_Storage_v1.0'
             }
             
             # Return as JSON file download
@@ -7460,7 +7473,7 @@ def extract_content_implementation_with_alien_tech(url: str, metadata: Dict[str,
         print("🛸 ALIEN TECH ENHANCED EXTRACTION STARTING...")
         
         # Use EXISTING ROBUST EXTRACTION SYSTEM (the proven multi-stage extraction pipeline)
-        print("  📡 Using proven ArcHive extraction pipeline...")
+        print("  📡 Using proven Ancient High-Tech extraction pipeline...")
         
         try:
             # Call the ACTUAL robust extraction pipeline that's used by the main API
