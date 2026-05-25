@@ -113,24 +113,68 @@ import os
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 
+DEFAULT_CORS_ORIGINS = ("http://localhost:5000", "http://127.0.0.1:5000")
+
+
+def _csv_env(name: str, default: Tuple[str, ...]) -> List[str]:
+    value = os.getenv(name)
+    if not value:
+        return list(default)
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def get_cors_origins() -> List[str]:
+    """Return explicit browser origins allowed to call the optional extractor."""
+    return _csv_env("EXTRACTION_CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
+
+
+def _base_url_env(name: str, default: str) -> str:
+    return os.getenv(name, default).rstrip("/")
+
+
+def build_hive_post_url(username: str, permlink: str) -> str:
+    base_url = _base_url_env("HIVE_CONTENT_BASE_URL", "https://hive.blog")
+    return f"{base_url}/@{username}/{permlink}"
+
+
+def build_hive_transaction_url(tx_id: str) -> str:
+    base_url = _base_url_env("HIVE_EXPLORER_BASE_URL", "https://hiveblocks.com")
+    return f"{base_url}/tx/{tx_id}"
+
+
+def get_frontend_base_url(request=None) -> str:
+    """Resolve the companion frontend URL without embedding a hosted preview domain."""
+    if frontend_url := os.getenv("FRONTEND_BASE_URL"):
+        return frontend_url.rstrip("/")
+
+    if request:
+        host = request.headers.get("Host", "localhost:8000")
+        hostname = host.split(":", 1)[0]
+        port = os.getenv("FRONTEND_PORT", "5000")
+        scheme = request.headers.get("X-Forwarded-Proto", request.scheme or "http")
+        if hostname in {"localhost", "127.0.0.1"}:
+            scheme = "http"
+        return f"{scheme}://{hostname}:{port}"
+
+    return "http://localhost:5000"
+
 def get_dynamic_base_url(request=None):
     """
     Professional-grade dynamic URL detection
     Works in development, preview, and production environments
     """
-    # Priority 1: Replit deployment environment variables
+    # Priority 1: Custom base URL override
+    if base_url := os.getenv('BASE_URL') or os.getenv('PUBLIC_BASE_URL'):
+        return base_url.rstrip('/')
+
+    # Priority 2: legacy preview URL, if an operator still supplies it
     if repl_url := os.getenv('REPL_URL'):
         return repl_url.rstrip('/')
-    
-    # Priority 2: Custom base URL override
-    if base_url := os.getenv('BASE_URL'):
-        return base_url.rstrip('/')
-    
-    # Priority 3: Request-based detection (works everywhere)
+
+    # Priority 3: Request-based detection
     if request:
         host = request.headers.get('Host', 'localhost:5000')
-        # Automatic HTTPS detection for deployed domains
-        scheme = 'https' if any(domain in host for domain in ['.replit.app', '.repl.co']) else 'http'
+        scheme = request.headers.get('X-Forwarded-Proto', request.scheme or 'http')
         return f"{scheme}://{host}"
     
     # Fallback for non-request contexts
@@ -676,8 +720,8 @@ from psycopg2 import pool
 from contextlib import contextmanager
 
 app = Flask(__name__)
-CORS(app, 
-     origins=["https://*.replit.app", "https://*.replit.dev", "http://localhost:*"],
+CORS(app,
+     origins=get_cors_origins(),
      methods=["GET", "POST", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization"],
      expose_headers=["X-RateLimit-Remaining", "X-RateLimit-Reset"])
@@ -1398,7 +1442,7 @@ def stackoverflow_api_extraction(url: str) -> Tuple[Optional[str], Optional[Dict
         
         session = requests.Session()
         session.headers.update({
-            'User-Agent': 'ArcHive-ContentExtractor/1.0'
+            'User-Agent': os.getenv('EXTRACTION_USER_AGENT', 'AncientHighTechCompression-Extractor/1.0')
         })
         
         print("    🔧 Calling StackOverflow API...")
@@ -4472,8 +4516,8 @@ def update_verification():
             'username': username,
             'permlink': permlink,
             'timestamp': datetime.now().isoformat(),
-            'hive_url': f"https://9136ea47-1260-4a5e-8d7b-17ebaf01c724-00-33z9xcnnecenb.worf.replit.dev:4200/@{username}/{permlink}",
-            'explorer_url': f"https://9136ea47-1260-4a5e-8d7b-17ebaf01c724-00-33z9xcnnecenb.worf.replit.dev:4200/tx/{tx_id}",
+            'hive_url': build_hive_post_url(username, permlink),
+            'explorer_url': build_hive_transaction_url(tx_id),
             'blockchain_validation': {'status': 'pending'}
         }
         
@@ -4487,8 +4531,8 @@ def update_verification():
         return jsonify({
             'success': True,
             'verification_links': {
-                'hive_post': f"https://9136ea47-1260-4a5e-8d7b-17ebaf01c724-00-33z9xcnnecenb.worf.replit.dev:4200/@{username}/{permlink}",
-                'blockchain_explorer': f"https://9136ea47-1260-4a5e-8d7b-17ebaf01c724-00-33z9xcnnecenb.worf.replit.dev:4200/tx/{tx_id}",
+                'hive_post': build_hive_post_url(username, permlink),
+                'blockchain_explorer': build_hive_transaction_url(tx_id),
                 'transaction_id': tx_id
             },
             'blockchain_validation': 'initiated'
@@ -5079,7 +5123,7 @@ def register_archive():
 @app.route('/', methods=['GET'])
 @limiter.limit("30 per minute")
 def root_endpoint():
-    """Root endpoint with user-friendly redirect to main ArcHive interface"""
+    """Root endpoint with user-friendly redirect to the companion interface"""
     # Check if this is an automated request (API call)
     user_agent = request.headers.get('User-Agent', '')
     accept_header = request.headers.get('Accept', '')
@@ -5092,32 +5136,19 @@ def root_endpoint():
         request.args.get('format') == 'json'):
         return jsonify({
             'status': 'healthy',
-            'service': 'ArcHive Content Extraction',
+            'service': 'Ancient High-Tech Compression Extraction',
             'version': '3.0',
             'endpoints': ['/api/extract', '/api/health'],
             'timestamp': datetime.now().isoformat()
         })
-    
-    # Get the proper domain for redirect
-    host = request.headers.get('Host', 'localhost:8000')
-    if ':' in host:
-        domain = host.split(':')[0]
-    else:
-        domain = host
-    
-    # Use proper Replit domain or localhost
-    if 'replit.dev' in domain or domain.endswith('.replit.app'):
-        redirect_url = f"https://{domain.replace('-8000', '-5000')}"
-    elif domain != 'localhost':
-        redirect_url = f"http://{domain}:5000"
-    else:
-        redirect_url = "http://localhost:5000"
+
+    redirect_url = get_frontend_base_url(request)
     
     # Return redirect page for human users with JavaScript fallback
     html_template = '''<!DOCTYPE html>
 <html>
 <head>
-    <title>ArcHive - Redirecting...</title>
+    <title>Ancient High-Tech Compression - Redirecting...</title>
     <meta http-equiv="refresh" content="2;url=REDIRECT_URL_PLACEHOLDER">
     <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; margin: 0; }
@@ -5139,9 +5170,9 @@ def root_endpoint():
 </head>
 <body>
     <div class="container">
-        <div class="logo">🔗 ArcHive</div>
+        <div class="logo">Ancient High-Tech Compression</div>
         <div class="message">Backend Server - Redirecting to Main Interface</div>
-        <div class="redirect-info">Taking you to the ArcHive interface...</div>
+        <div class="redirect-info">Taking you to the configured frontend interface...</div>
         <div class="loading">
             <div class="spinner"></div>
         </div>
