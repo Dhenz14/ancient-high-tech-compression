@@ -7,6 +7,9 @@ contracts:
 - feature: sequential-rank-stream-encoder
   organ_id: pancreas.token_economy
   source_organ: pancreas.token_economy
+  classification_source: explicit
+  classification_confidence: verified
+  why_this_organ: Token-economy owns compression surfaces that reduce prompt and storage cost.
   synergy_targets: []
   gap_status: LIVE
   repo: ancient-high-tech-compression
@@ -22,6 +25,9 @@ contracts:
 - feature: two-stage-brotli-codec
   organ_id: pancreas.token_economy
   source_organ: pancreas.token_economy
+  classification_source: explicit
+  classification_confidence: verified
+  why_this_organ: Token-economy owns compression surfaces that reduce prompt and storage cost.
   synergy_targets: []
   gap_status: LIVE
   repo: ancient-high-tech-compression
@@ -38,6 +44,9 @@ contracts:
 - feature: rank-dictionary
   organ_id: pancreas.token_economy
   source_organ: pancreas.token_economy
+  classification_source: explicit
+  classification_confidence: verified
+  why_this_organ: Token-economy owns compression dictionaries used to reduce encoded token cost.
   synergy_targets: []
   gap_status: LIVE
   repo: ancient-high-tech-compression
@@ -53,6 +62,9 @@ contracts:
 - feature: rank-optimizer-sa
   organ_id: pancreas.token_economy
   source_organ: pancreas.token_economy
+  classification_source: explicit
+  classification_confidence: verified
+  why_this_organ: Token-economy owns rank optimization because it tunes compression efficiency and cost.
   synergy_targets: []
   gap_status: LIVE
   repo: ancient-high-tech-compression
